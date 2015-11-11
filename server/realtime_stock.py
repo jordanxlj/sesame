@@ -23,9 +23,9 @@ def get_today_data():
     query = StockCurrentQuery()
     collection = create_collection(today)
 
-    code_file = open("code.txt", "r")
+    code_file = open("../config/code.txt", "r")
 
-    out_file_name = "data/%s_data.txt" % today
+    out_file_name = "../data/%s_data.txt" % today
     out_file = codecs.open(out_file_name, "wb", encoding='utf-8')  
     out_file.write("id\tname\tprice\tupdown\tturnover\tvalue\n")
 
