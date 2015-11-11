@@ -29,7 +29,7 @@ class BollGenerator(object):
         plot.plot(x, dn, '-', linewidth=3, color='orange', label='down', zorder=1)        
         plot.axhline(0, linewidth=1, color='black')
         plot.title('boll of %s' % self.__code, fontsize=20)
-        l= plot.legend(loc='upper right', shadow=True, fancybox=True)
+        l= plot.legend(loc='lower right', shadow=True, fancybox=True)
         plot.grid(True)
         plot.show()
 
