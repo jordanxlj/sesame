@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" 
+    android:orientation="horizontal" 
+    android:layout_width="wrap_content" 
+    android:layout_height="wrap_content" 
+    > 
+<ImageView 
+    android:id="@+id/weixin_btn" 
+    android:layout_width="wrap_content" 
+    android:layout_height="wrap_content" 
+    /> 
+<TextView 
+    android:id="@+id/weixin_txt" 
+    android:layout_width="wrap_content" 
+    android:layout_height="wrap_content" 
+    android:textColor="#ff0f0f" 
+    android:text="这里准备设置微信登录界面"
+    android:layout_marginLeft="8dip" 
+    android:layout_gravity="center_vertical" 
+    /> 
+</LinearLayout> 
