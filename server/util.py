@@ -25,6 +25,10 @@ class Util(object):
 
     @staticmethod
     def http_get_content(url, headers=None, charset=None):
+        if headers is None:
+            headers = {  
+                'User-Agent':'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.1.6) Gecko/20091201 Firefox/3.5.6'  
+        }
         try:
             http = httplib2.Http()
             request, content = http.request(uri=url, headers=headers)
