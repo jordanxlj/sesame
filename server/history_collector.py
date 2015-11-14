@@ -18,7 +18,7 @@ class StockHistoryCollector(object):
             close_price = float(data[2])
             updown = float(data[4].strip('%'))
             turnover = float(data[9].strip('%'))
-            result[day] = (close_price, updown, turnover)
+            result[day] = [close_price, updown, turnover]
 
     def collect_history_data(self, stock_id):
         history_datas = {}

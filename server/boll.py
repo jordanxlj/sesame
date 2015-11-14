@@ -33,7 +33,7 @@ class Boll(object):
 
         result = []
         for k, v in data:
-            result.append(v)
+            result.append(v[0])
         return result
 
     def boll(self, price_list):
