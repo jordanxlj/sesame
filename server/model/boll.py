@@ -2,7 +2,7 @@ from datetime import datetime
 import numpy
 import sys
 
-from db import *
+from util.db import DB
 
 def data_cmp(data1, data2):
     day1 = datetime.strptime(data1[0], '%Y-%m-%d')

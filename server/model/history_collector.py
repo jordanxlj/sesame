@@ -1,6 +1,6 @@
 import json
 
-from util import Util
+from util.util import Util
 
 class StockHistoryCollector(object):
     def __init__(self):

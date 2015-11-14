@@ -2,8 +2,8 @@ import matplotlib.pyplot as plot
 import numpy
 import sys
 
-from boll import Boll
-from history_collector import StockHistoryCollector
+from model.boll import Boll
+from model.history_collector import StockHistoryCollector
 
 class BollGenerator(object):
     def __init__(self, code):
