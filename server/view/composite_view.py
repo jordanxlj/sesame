@@ -20,11 +20,12 @@ class CompositeView(object):
         ax1.plot(x, up, '-', linewidth=3, color='magenta', label='up', zorder=1)        
         ax1.plot(x, dn, '-', linewidth=3, color='orange', label='down', zorder=1)        
         ax1.legend(loc=1, shadow=True, fancybox=True)
+        ax1.set_ylim(-10, max(pl+mb+up+dn)+5)
         ax1.set_ylabel('stock price');
 
         ax2 = ax1.twinx() # this is the important function
         ax2.plot(x, to, '-', linewidth=3, color='black', label='turnover', zorder=1)        
-        ax2.set_ylim(0, 100)
+        ax2.set_ylim(0, 50)
         ax2.set_ylabel('turnover(%)');
         #plot.axhline(0, linewidth=1, color='black')
         plot.title('boll of %s' % self.__code, fontsize=20)
