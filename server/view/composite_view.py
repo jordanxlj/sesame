@@ -10,7 +10,7 @@ class CompositeView(object):
         self.__code = code
     
     def draw(self, dates, pl, mb, up, dn, to):
-        #x = dates
+        #x = dates[20:]
         x = [v for v in range(0, len(pl))]
         fig = plot.figure()
         ax1 = fig.add_subplot(111)
@@ -19,7 +19,7 @@ class CompositeView(object):
         ax1.plot(x, mb, '-', linewidth=3, color='green', label='mean', zorder=1)        
         ax1.plot(x, up, '-', linewidth=3, color='magenta', label='up', zorder=1)        
         ax1.plot(x, dn, '-', linewidth=3, color='orange', label='down', zorder=1)        
-        ax1.legend(loc=1, shadow=True, fancybox=True)
+        ax1.legend(loc='best', shadow=True, fancybox=True)
         ax1.set_ylim(-10, max(pl+mb+up+dn)+5)
         ax1.set_ylabel('stock price');
 
