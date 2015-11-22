@@ -2,24 +2,14 @@ import matplotlib.pyplot as plot
 import numpy
 import sys
 
-from boll import Boll
-from history_collector import StockHistoryCollector
+from model.boll import Boll
+from model.history_collector import StockHistoryCollector
 
-class BollGenerator(object):
+class BollView(object):
     def __init__(self, code):
         self.__code = code
     
-    def __collect_origin_data(self):
-        history_collector = StockHistoryCollector()
-        return history_collector.collect_history_data(self.__code)
-
-    def __get_boll_data(self):
-        datas = self.__collect_origin_data()
-        boll = Boll(datas)
-        price_list = boll.get_stock_data(self.__code)
-        return boll.boll(price_list)
-
-    def __draw_boll(self, pl, mb, up, dn):
+    def draw(self, pl, mb, up, dn):
         x = [v for v in range(0, len(pl))]
         plot.figure()
 
@@ -33,18 +23,22 @@ class BollGenerator(object):
         plot.grid(True)
         plot.show()
 
-    def generate(self):
-        pl, mb, up, dn = self.__get_boll_data()
-        self.__draw_boll(pl, mb, up, dn)
-
 def main(argv):
     if len(argv) <= 1:
         print "please input stock code"
         return
 
     code = argv[1]
-    generator = BollGenerator(code)
-    generator.generate()
+
+    history_collector = StockHistoryCollector()
+    datas = history_collector.collect_history_data(code)
+
+    boll = Boll(datas)
+    price_list = boll.get_stock_data(code)
+    pl, mb, up, dn = boll.boll(price_list)
+
+    view = BollView(code)
+    view.draw(pl, mb, up, dn)
 
 if __name__ == "__main__":
     main(sys.argv)

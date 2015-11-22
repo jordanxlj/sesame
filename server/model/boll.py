@@ -1,18 +1,7 @@
-from datetime import datetime
 import numpy
 import sys
 
-from db import *
-
-def data_cmp(data1, data2):
-    day1 = datetime.strptime(data1[0], '%Y-%m-%d')
-    day2 = datetime.strptime(data2[0], '%Y-%m-%d')
-    if day1 > day2:
-        return 1
-    elif day1 < day2:
-        return -1
-    else:
-        return 0
+from util.db import DB
 
 def get_collection():
     db = DB('history_stock')
@@ -25,15 +14,12 @@ class Boll(object):
         self.__history_data = history_data
 
     def get_stock_data(self, stock_code):
-        data = list((k, v) for (k, v) in self.__history_data.iteritems() if k.startswith('2015'))
-        data.sort(data_cmp)
-
-        if len(data) < self.BOLL_N*2:
+        if len(self.__history_data) < self.BOLL_N*2:
             return None
 
         result = []
-        for k, v in data:
-            result.append(v)
+        for k, v in self.__history_data:
+            result.append(v['close'])
         return result
 
     def boll(self, price_list):
