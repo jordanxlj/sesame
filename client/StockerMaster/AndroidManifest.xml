@@ -18,6 +18,7 @@
         
         <activity android:name=".HomeActivity"/>
         <activity android:name=".UsrActivity"/>
+        <activity android:name=".BollingerActivity"/>
 
     </application>
 </manifest>

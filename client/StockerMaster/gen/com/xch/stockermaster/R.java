@@ -59,35 +59,38 @@ public final class R {
         public static final int widget_edit_block_bg_normal=0x7f02000e;
     }
     public static final class id {
-        public static final int btn=0x7f09000d;
-        public static final int btn_add=0x7f090003;
-        public static final int btn_remove=0x7f090004;
-        public static final int checkBox=0x7f09000c;
-        public static final int imageView1=0x7f090012;
-        public static final int info_id=0x7f090009;
-        public static final int info_name=0x7f090008;
-        public static final int info_price=0x7f09000a;
-        public static final int info_wave=0x7f09000b;
-        public static final int listView=0x7f090005;
+        public static final int btn=0x7f09000f;
+        public static final int btn_add=0x7f090005;
+        public static final int btn_remove=0x7f090006;
+        public static final int checkBox=0x7f09000e;
+        public static final int imageView1=0x7f090014;
+        public static final int info_id=0x7f09000b;
+        public static final int info_name=0x7f09000a;
+        public static final int info_price=0x7f09000c;
+        public static final int info_wave=0x7f09000d;
+        public static final int listView=0x7f090007;
         public static final int main_radio=0x7f090000;
-        public static final int menu_settings=0x7f090013;
-        public static final int name=0x7f09000e;
-        public static final int price=0x7f09000f;
+        public static final int menu_settings=0x7f090015;
+        public static final int name=0x7f090010;
+        public static final int price=0x7f090011;
         public static final int radio_home=0x7f090001;
         public static final int radio_usr=0x7f090002;
-        public static final int textView1=0x7f090011;
-        public static final int wave=0x7f090010;
-        public static final int weixin_btn=0x7f090006;
-        public static final int weixin_txt=0x7f090007;
+        public static final int surfaceview=0x7f090004;
+        public static final int textView1=0x7f090013;
+        public static final int title=0x7f090003;
+        public static final int wave=0x7f090012;
+        public static final int weixin_btn=0x7f090008;
+        public static final int weixin_txt=0x7f090009;
     }
     public static final class layout {
         public static final int activity_main=0x7f030000;
-        public static final int head=0x7f030001;
-        public static final int liststocker=0x7f030002;
-        public static final int login=0x7f030003;
-        public static final int myinfo=0x7f030004;
-        public static final int stocker_list_item=0x7f030005;
-        public static final int stockerline=0x7f030006;
+        public static final int bollinger=0x7f030001;
+        public static final int head=0x7f030002;
+        public static final int liststocker=0x7f030003;
+        public static final int login=0x7f030004;
+        public static final int myinfo=0x7f030005;
+        public static final int stocker_list_item=0x7f030006;
+        public static final int stockerline=0x7f030007;
     }
     public static final class menu {
         public static final int activity_main=0x7f080000;

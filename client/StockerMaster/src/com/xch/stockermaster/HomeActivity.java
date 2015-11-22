@@ -8,6 +8,7 @@ import java.util.Map;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -70,7 +71,7 @@ public class HomeActivity extends Activity {
 	     }     
 	    public MyAdapter(Context context, List<Map<String, Object>> listItems) {   
 	        this.context = context;            
-	        listContainer = LayoutInflater.from(context);   //创建视图容器并设置上下文   
+	        listContainer = LayoutInflater.from(context);
 	        this.listItems = listItems;   
 	        hasChecked = new boolean[getCount()];   
 	    }   
@@ -150,11 +151,16 @@ public class HomeActivity extends Activity {
 	    } 
 
 	    private void showDetailInfo(int clickID) {   
+	    	Intent intent = new Intent();
+	    	intent.setClass(HomeActivity.this, BollingerActivity.class);
+	    	intent.putExtra("id", listItems.get(clickID).get("id").toString());
+	    	HomeActivity.this.startActivity(intent);
+	    	/*
 	        new AlertDialog.Builder(context)
 	        .setTitle(listItems.get(clickID).get("name")+" ")   
 	        .setMessage("代码:"+listItems.get(clickID).get("id").toString()+"当前价格："+listItems.get(clickID).get("price").toString())                 
 	        .setPositiveButton("确定", null)   
-	        .show();   
+	        .show();   */
 	    } 
 	}
 
