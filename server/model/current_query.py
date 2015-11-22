@@ -1,7 +1,7 @@
 import codecs
 import re
 import urllib2  
-from util import Util
+from util.util import Util
   
 class StockCurrentQuery(object):  
     def __init__(self):  

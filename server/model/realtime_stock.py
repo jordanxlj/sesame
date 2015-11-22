@@ -4,7 +4,7 @@ from datetime import date
 from pymongo import ASCENDING, DESCENDING
 
 from current_query import StockCurrentQuery  
-from db import *
+from util.db import *
 
 def create_collection(day):
     db = DB('stock')
