@@ -23,7 +23,8 @@ class DB(object):
 
     def get_collection(self, collection):
         if self.__db:
-            return self.__db[collection]
+            if collection in self.__db.collection_names():
+                return self.__db[collection]
         return None
 
     def create_collection(self, collection):
@@ -46,6 +47,7 @@ class DB(object):
 if __name__ == "__main__":
     db = DB('stock')
     print db.get_collections()
+    print db.get_collection("hello")
     try:
         db.create_collection("hello")
     except:

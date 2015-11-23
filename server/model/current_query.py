@@ -2,15 +2,16 @@ import codecs
 import re
 import urllib2  
 from util.util import Util
+from constants import Constants
   
 class StockCurrentQuery(object):  
     def __init__(self):  
-        self.__curent_url = 'http://qt.gtimg.cn/q='
+        self.__curent_url = Constants.CURRENT_QUERY_URL
   
     def get_rt_data(self, stock_id):  
         print stock_id
         try:  
-            request = urllib2.Request(self.__curent_url+str(stock_id))  
+            request = urllib2.Request(self.__curent_url % (stock_id))  
             response = urllib2.urlopen(request)  
             contents = response.read()  
             match_result = re.findall(r'v_.*?="(.*?)";', contents)

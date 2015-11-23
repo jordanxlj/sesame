@@ -6,9 +6,12 @@ from pymongo import ASCENDING, DESCENDING
 from current_query import StockCurrentQuery  
 from util.db import *
 
-def create_collection(day):
+def get_collection(day):
     db = DB('stock')
     collection = db.get_collection(day)
+    if collection:
+        collection.drop()
+    collection = db.create_collection(day)
     collection.create_index([("code", ASCENDING)])
     return collection
 
@@ -21,7 +24,7 @@ def insert_into_db(collection, code, name, price, updown, turnover, value):
 def get_today_data():
     today = date.isoformat(date.today())
     query = StockCurrentQuery()
-    collection = create_collection(today)
+    collection = get_collection(today)
 
     code_file = open("../config/code.txt", "r")
 
@@ -42,7 +45,7 @@ def get_today_data():
     out_file.close()
 
 def get_history_data(day):
-    collection = create_collection(day)
+    collection = get_collection(day)
     data_file_name = "data/%s_data.txt" % day
     data_file = codecs.open(data_file_name, "r", 'utf-8')
 
