@@ -15,11 +15,8 @@ def get_collection(day):
     collection.create_index([("code", ASCENDING)])
     return collection
 
-def insert_into_db(collection, code, name, price, updown, turnover, value):
-    data = {'code': code, 'name': name, 
-            'price': float(price), 'updown': float(updown), 
-            'turnover': float(turnover), 'value': float(value)}
-    collection.insert(data)
+def insert_into_db(collection, current_info):
+    collection.insert(current_info)
 
 def get_today_data():
     today = date.isoformat(date.today())
@@ -35,11 +32,12 @@ def get_today_data():
     for line in code_file.readlines():
         code = line.strip()
         if len(code):
-            name, price, updown, turnover, value = query.get_rt_data('sz'+code)
-            if (price != '0.00' and price != '0.000') and len(turnover):
-                insert_into_db(collection, code, name, price,
-                               updown, turnover, value)
-                out_file.write("%s\t%s\t%s\t%s%%\t%s%%\t%s\n" %(code, name, price, updown, turnover, value))
+            current_info = query.get_rt_data(code)
+            price = current_info['close_price']
+            turnover = current_info['turnover']
+            if (price != '0.00' and price != '0.000') and turnover > 0:
+                insert_into_db(collection, current_info)
+                #out_file.write("%s\t%s\t%s\t%s%%\t%s%%\t%s\n" %(code, name, price, updown, turnover, value))
 
     code_file.close()
     out_file.close()
