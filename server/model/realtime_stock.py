@@ -25,14 +25,16 @@ def get_today_data():
 
     code_file = open("../config/code.txt", "r")
 
-    out_file_name = "../data/%s_data.txt" % today
-    out_file = codecs.open(out_file_name, "wb", encoding='utf-8')  
-    out_file.write("id\tname\tprice\tupdown\tturnover\tvalue\n")
+    #out_file_name = "../data/%s_data.txt" % today
+    #out_file = codecs.open(out_file_name, "wb", encoding='utf-8')  
+    #out_file.write("id\tname\tprice\tupdown\tturnover\tvalue\n")
 
     for line in code_file.readlines():
         code = line.strip()
         if len(code):
-            current_info = query.get_rt_data(code)
+            current_info = {}
+            query.get_basic_data(code, current_info)
+            query.get_flow_data(code, current_info)
             price = current_info['close_price']
             turnover = current_info['turnover']
             if (price != '0.00' and price != '0.000') and turnover > 0:
@@ -40,7 +42,7 @@ def get_today_data():
                 #out_file.write("%s\t%s\t%s\t%s%%\t%s%%\t%s\n" %(code, name, price, updown, turnover, value))
 
     code_file.close()
-    out_file.close()
+    #out_file.close()
 
 def get_history_data(day):
     collection = get_collection(day)
