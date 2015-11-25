@@ -10,46 +10,69 @@ class StockCurrentQuery(object):
         self.__flow_url = Constants.CURRENT_FLOW_QUERY_URL
 
     def __get_stock_code(self, stock_id):
-        if stock_id.startswith("00") or stock_id.startswith("300"):
-            return 'sz' + stock_id
-        return 'sh' + stock_id
+        for key, value in Constants.STOCK_CODE_CATEGORIES:
+            if stock_id.startswith(key):
+                return value + stock_id
+        print "stock code : %s is unkown" % stock_id
+        return ''
   
+    def __parse_stock_data(self, result, stock_info):
+        stock_info['name'] = result[1].decode('gbk')
+        stock_info['close_price'] = float(result[3])
+        stock_info['high_price'] = float(result[33])
+        stock_info['low_price'] = float(result[34])
+        stock_info['amplitude'] = float(result[43].strip('%'))
+        stock_info['updown'] = float(result[32].strip('%'))
+        stock_info['turnover'] = float(result[38].strip('%'))
+        stock_info['volume'] = float(result[45])
+        
+    def __parse_stock_index(self, result, stock_info):
+        stock_info['name'] = result[1].decode('gbk')
+        stock_info['close_price'] = float(result[3])
+        stock_info['high_price'] = float(result[33])
+        stock_info['low_price'] = float(result[34])
+        stock_info['amplitude'] = float(result[43].strip('%'))
+        stock_info['updown'] = float(result[32].strip('%'))
+        stock_info['volume'] = float(result[37])
+        
     def get_basic_data(self, stock_id, stock_info):  
         print stock_id
-        stock_info['code'] = stock_id
         try:  
-            url = self.__basic_url % self.__get_stock_code(stock_id)
+            stock_code = self.__get_stock_code(stock_id)
+            if len(stock_code) == 0:
+                return 
+
+            stock_info['code'] = stock_id
+            url = self.__basic_url % stock_code
             #print url
             request = urllib2.Request(url)
             response = urllib2.urlopen(request)  
             contents = response.read()  
             match_result = re.findall(r'v_.*?="(.*?)";', contents)
             if len(match_result) == 0:
-                return '', '', '', '', ''
+                return
             result = match_result[0].split('~')
-            stock_info['name'] = result[1].decode('gbk')
-            stock_info['close_price'] = float(result[3])
-            stock_info['high_price'] = float(result[33])
-            stock_info['low_price'] = float(result[34])
-            stock_info['amplitude'] = float(result[43].strip('%'))
-            stock_info['updown'] = float(result[32].strip('%'))
-            stock_info['turnover'] = float(result[38].strip('%'))
-            stock_info['volume'] = float(result[45])
-            return stock_info
+            if stock_id in Constants.STOCK_INDEX_CODES:
+                self.__parse_stock_index(result, stock_info)
+            else:
+                self.__parse_stock_data(result, stock_info)
   
         except urllib2.URLError, e:  
             print e
 
     def get_flow_data(self, stock_id, stock_info):  
         try:  
-            url = self.__flow_url % self.__get_stock_code(stock_id)
-            #print url
+            stock_code = self.__get_stock_code(stock_id)
+            if len(stock_code) == 0:
+                return 
+
+            url = self.__flow_url % stock_code
             request = urllib2.Request(url)
             response = urllib2.urlopen(request)  
             contents = response.read()  
             match_result = re.findall(r'v_.*?="(.*?)";', contents)
             if len(match_result) == 0:
-                return '', '', '', '', ''
+                return
             result = match_result[0].split('~')
             stock_info['main_inflow'] = float(result[1])
             stock_info['main_outflow'] = float(result[2])

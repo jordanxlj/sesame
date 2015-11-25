@@ -36,8 +36,8 @@ def get_today_data():
             query.get_basic_data(code, current_info)
             query.get_flow_data(code, current_info)
             price = current_info['close_price']
-            turnover = current_info['turnover']
-            if (price != '0.00' and price != '0.000') and turnover > 0:
+            #turnover = current_info['turnover']
+            if (price != '0.00' and price != '0.000'):
                 insert_into_db(collection, current_info)
                 #out_file.write("%s\t%s\t%s\t%s%%\t%s%%\t%s\n" %(code, name, price, updown, turnover, value))
 
