@@ -1,5 +1,6 @@
 import codecs
 import sys
+import time
 from datetime import date
 from pymongo import ASCENDING, DESCENDING
 
@@ -61,11 +62,19 @@ def get_history_data(day):
             insert_into_db(collection, code, name, price, updown.strip('%'), turnover.strip('%'), value)
 
 def main(argv):
-    if len(argv) <= 1:
-        get_today_data()
-    else:
-        day = argv[1]
-        get_history_data(day)
+    while True:
+        try:
+            if len(argv) <= 1:
+                get_today_data()
+            else:
+                day = argv[1]
+                get_history_data(day)
+            break
+        except e:
+            print e
+            time.sleep(10)
+            print "retry."
+    print "finished."
 
 if __name__ == "__main__":
     main(sys.argv)
