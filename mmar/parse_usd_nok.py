@@ -1,0 +1,145 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import numpy as np
+import matplotlib.dates as mdates
+from scipy.stats import kstest, shapiro, norm
+
+# 设置matplotlib的基本样式
+plt.rcParams['figure.facecolor'] = 'white'
+plt.rcParams['axes.facecolor'] = 'white'
+plt.rcParams['axes.grid'] = True
+plt.rcParams['grid.alpha'] = 0.3
+plt.rcParams['grid.linestyle'] = '--'
+
+# 读取CSV文件，使用分号作为分隔符
+df = pd.read_csv('USD_NOK.csv', sep=';')
+
+# 只保留时间和价格列
+df = df[['TIME_PERIOD', 'OBS_VALUE']]
+
+# 将时间列转换为datetime类型
+df['TIME_PERIOD'] = pd.to_datetime(df['TIME_PERIOD'])
+
+# 将价格列转换为float类型
+df['OBS_VALUE'] = df['OBS_VALUE'].astype(float)
+
+# 设置时间列为索引
+df.set_index('TIME_PERIOD', inplace=True)
+
+# 重命名列
+df.columns = ['Price']
+
+# 按时间排序
+df.sort_index(inplace=True)
+
+# 只保留指定时间范围的数据
+start_date = pd.to_datetime('1989-01-25')
+end_date = pd.to_datetime('2019-03-01')
+df = df.loc[(df.index >= start_date) & (df.index <= end_date)]
+
+# 去除无效或缺失的价格数据
+df = df[df['Price'] > 0]
+df = df.dropna(subset=['Price'])
+
+# 只保留前7561个数据点
+df = df.iloc[:7561]
+
+# 重置索引，保证shift后能正常对齐
+df = df.reset_index()
+
+# 计算对数差值
+log_returns = np.log(df['Price']) - np.log(df['Price'].shift(1))
+log_returns_df = pd.DataFrame({'TIME_PERIOD': df['TIME_PERIOD'], 'Log_Returns': log_returns})
+log_returns_df = log_returns_df.dropna()
+log_returns_df['Log_Returns'] = log_returns_df['Log_Returns'].astype(float)
+log_returns_df.set_index('TIME_PERIOD', inplace=True)
+
+# 放大对数差值100倍
+df_log100 = log_returns_df['Log_Returns'] * 100
+log_returns_df['Log_Returns_100x'] = df_log100
+
+# Kolmogorov-Smirnov和Shapiro-Wilk正态性检验
+log_returns_data = log_returns_df['Log_Returns']
+ks_stat, ks_p = kstest(
+    (log_returns_data - log_returns_data.mean()) / log_returns_data.std(),  # 标准化
+    'norm'
+)
+shapiro_stat, shapiro_p = shapiro(log_returns_data)
+print(f"Kolmogorov-Smirnov检验P值: {ks_p:.6f}")
+print(f"Shapiro-Wilk检验P值: {shapiro_p:.6f}")
+if ks_p < 0.05 and shapiro_p < 0.05:
+    print("""结论：对数差值序列的P值均远小于0.05，拒绝正态性假设，说明其分布显著偏离正态分布（非正态分布）。""")
+else:
+    print("""结论：P值大于0.05，不能拒绝正态性假设。""")
+
+# 创建两个子图
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), height_ratios=[1, 1])
+fig.subplots_adjust(hspace=0.3)  # 调整子图之间的间距
+
+# 绘制原始价格图（上子图）
+ax1.plot(df['TIME_PERIOD'], df['Price'], linewidth=1, color='red')
+ax1.fill_between(df['TIME_PERIOD'], df['Price'], alpha=0.15, color='red')
+ax1.set_title('USD/NOK Exchange Rate Over Time', fontsize=14)
+ax1.set_xlabel('Date', fontsize=12)
+ax1.set_ylabel('Price (NOK)', fontsize=12)
+ax1.tick_params(axis='x', rotation=45)
+ax1.yaxis.set_major_locator(ticker.MultipleLocator(1))
+# 去除x轴两边留白
+ax1.set_xlim(df['TIME_PERIOD'].iloc[0], df['TIME_PERIOD'].iloc[-1])
+
+# 绘制对数差值图（下子图，放大100倍）
+ax2.plot(log_returns_df.index, log_returns_df['Log_Returns_100x'], linewidth=1, color='blue')
+ax2.fill_between(log_returns_df.index, log_returns_df['Log_Returns_100x'], 0, alpha=0.15, color='blue')
+ax2.set_title('Log Returns of USD/NOK Exchange Rate (x100)', fontsize=14)
+ax2.set_xlabel('Date', fontsize=12)
+ax2.set_ylabel('Log Returns x100', fontsize=12)
+ax2.tick_params(axis='x', rotation=45)
+ax2.yaxis.set_major_locator(ticker.MultipleLocator(1))
+# 去除x轴两边留白
+ax2.set_xlim(log_returns_df.index[0], log_returns_df.index[-1])
+
+# 标注开始和结束时间，只保留数据范围内的刻度
+start_time = df['TIME_PERIOD'].iloc[0]
+end_time = df['TIME_PERIOD'].iloc[-1]
+for ax in [ax1, ax2]:
+    xticks = list(ax.get_xticks())
+    # 转换为datetime
+    xticks_dt = [mdates.num2date(x).replace(tzinfo=None) for x in xticks]
+    # 只保留在数据范围内的刻度
+    xticks_filtered = [x for x in xticks_dt if (x >= start_time) and (x <= end_time)]
+    # 保证开始和结束时间在刻度中
+    if start_time not in xticks_filtered:
+        xticks_filtered = [start_time] + xticks_filtered
+    if end_time not in xticks_filtered:
+        xticks_filtered = xticks_filtered + [end_time]
+    ax.set_xticks([mdates.date2num(x) for x in xticks_filtered])
+    # 标注
+    ax.annotate(str(start_time.date()), xy=(start_time, ax.get_ylim()[0]), xytext=(0, 10),
+                textcoords='offset points', ha='left', va='bottom', fontsize=10, color='green', rotation=45)
+    ax.annotate(str(end_time.date()), xy=(end_time, ax.get_ylim()[0]), xytext=(0, 10),
+                textcoords='offset points', ha='right', va='bottom', fontsize=10, color='green', rotation=45)
+
+# 自动调整布局
+plt.tight_layout()
+
+# 显示图表
+plt.show()
+
+# 显示前几行数据
+print("\n原始价格数据前5行:")
+print(df.head())
+print("\n对数差值数据前5行:")
+print(log_returns_df.head())
+
+# 显示数据基本信息
+print("\n原始价格数据基本信息:")
+print(df.info())
+print("\n对数差值数据基本信息:")
+print(log_returns_df.info())
+
+# 显示基本统计信息
+print("\n原始价格数据基本统计信息:")
+print(df.describe())
+print("\n对数差值数据基本统计信息:")
+print(log_returns_df.describe()) 
