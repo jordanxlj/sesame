@@ -48,7 +48,12 @@ df = df.iloc[:7561]
 # 重置索引，保证shift后能正常对齐
 df = df.reset_index()
 
-# 计算对数差值
+# 计算相对t0时刻的对数变化率
+relative_log_returns = np.log(df['Price']) - np.log(df['Price'].iloc[0])
+relative_log_returns_df = pd.DataFrame({'TIME_PERIOD': df['TIME_PERIOD'], 'Relative_Log_Returns': relative_log_returns})
+relative_log_returns_df.set_index('TIME_PERIOD', inplace=True)
+
+# 计算相邻时刻的对数差值
 log_returns = np.log(df['Price']) - np.log(df['Price'].shift(1))
 log_returns_df = pd.DataFrame({'TIME_PERIOD': df['TIME_PERIOD'], 'Log_Returns': log_returns})
 log_returns_df = log_returns_df.dropna()
@@ -73,8 +78,8 @@ if ks_p < 0.05 and shapiro_p < 0.05:
 else:
     print("""结论：P值大于0.05，不能拒绝正态性假设。""")
 
-# 创建两个子图
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), height_ratios=[1, 1])
+# 创建三个子图
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 15), height_ratios=[1, 1, 1])
 fig.subplots_adjust(hspace=0.3)  # 调整子图之间的间距
 
 # 绘制原始价格图（上子图）
@@ -85,10 +90,9 @@ ax1.set_xlabel('Date', fontsize=12)
 ax1.set_ylabel('Price (NOK)', fontsize=12)
 ax1.tick_params(axis='x', rotation=45)
 ax1.yaxis.set_major_locator(ticker.MultipleLocator(1))
-# 去除x轴两边留白
 ax1.set_xlim(df['TIME_PERIOD'].iloc[0], df['TIME_PERIOD'].iloc[-1])
 
-# 绘制对数差值图（下子图，放大100倍）
+# 绘制对数差值图（中子图，放大100倍）
 ax2.plot(log_returns_df.index, log_returns_df['Log_Returns_100x'], linewidth=1, color='blue')
 ax2.fill_between(log_returns_df.index, log_returns_df['Log_Returns_100x'], 0, alpha=0.15, color='blue')
 ax2.set_title('Log Returns of USD/NOK Exchange Rate (x100)', fontsize=14)
@@ -96,13 +100,21 @@ ax2.set_xlabel('Date', fontsize=12)
 ax2.set_ylabel('Log Returns x100', fontsize=12)
 ax2.tick_params(axis='x', rotation=45)
 ax2.yaxis.set_major_locator(ticker.MultipleLocator(1))
-# 去除x轴两边留白
 ax2.set_xlim(log_returns_df.index[0], log_returns_df.index[-1])
+
+# 绘制相对t0时刻的对数变化率图（下子图）
+ax3.plot(relative_log_returns_df.index, relative_log_returns_df['Relative_Log_Returns'], linewidth=1, color='green')
+ax3.fill_between(relative_log_returns_df.index, relative_log_returns_df['Relative_Log_Returns'], 0, alpha=0.15, color='green')
+ax3.set_title('Relative Log Returns from t0', fontsize=14)
+ax3.set_xlabel('Date', fontsize=12)
+ax3.set_ylabel('Relative Log Returns', fontsize=12)
+ax3.tick_params(axis='x', rotation=45)
+ax3.set_xlim(relative_log_returns_df.index[0], relative_log_returns_df.index[-1])
 
 # 标注开始和结束时间，只保留数据范围内的刻度
 start_time = df['TIME_PERIOD'].iloc[0]
 end_time = df['TIME_PERIOD'].iloc[-1]
-for ax in [ax1, ax2]:
+for ax in [ax1, ax2, ax3]:
     xticks = list(ax.get_xticks())
     # 转换为datetime
     xticks_dt = [mdates.num2date(x).replace(tzinfo=None) for x in xticks]
@@ -131,15 +143,21 @@ print("\n原始价格数据前5行:")
 print(df.head())
 print("\n对数差值数据前5行:")
 print(log_returns_df.head())
+print("\n相对t0时刻的对数变化率数据前5行:")
+print(relative_log_returns_df.head())
 
 # 显示数据基本信息
 print("\n原始价格数据基本信息:")
 print(df.info())
 print("\n对数差值数据基本信息:")
 print(log_returns_df.info())
+print("\n相对t0时刻的对数变化率数据基本信息:")
+print(relative_log_returns_df.info())
 
 # 显示基本统计信息
 print("\n原始价格数据基本统计信息:")
 print(df.describe())
 print("\n对数差值数据基本统计信息:")
-print(log_returns_df.describe()) 
+print(log_returns_df.describe())
+print("\n相对t0时刻的对数变化率数据基本统计信息:")
+print(relative_log_returns_df.describe()) 
