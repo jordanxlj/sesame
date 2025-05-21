@@ -181,18 +181,55 @@ plt.show()
 partition_results = calc_partition_function(relative_log_returns_df['Relative_Log_Returns'], delta_t, q)
 print(partition_results.iloc[0])
 
-for i in range (0, len(q)):
-    #print(i, partition_results.iloc[i])
-    plt.plot(np.log(delta_t), np.log(list(partition_results.iloc[i])/partition_results[1][q[i]]), color="red",linewidth=0.5, label=str(q[i]))
+# 默认抽稀filter
+def default_sparse_filter(qi):
+    return (qi % 0.25 == 0 and qi < 6 and qi > 1 and qi != 3.5 and qi != 4.5)
 
+def plot_partition_function(partition_results, delta_t, q, sparse_filter=None, legend_kwargs=None, title=None):
+    """
+    partition_results: DataFrame, 行为q，列为delta_t
+    delta_t: delta_t列表
+    q: q列表
+    sparse_filter: callable, 传入q[i]，返回True则画，否则跳过。None表示画全部。
+    legend_kwargs: dict, 传递给plt.legend的参数
+    title: str, 图标题
+    """
+    plt.figure(figsize=(16, 9))
+    for i in range(len(q)):
+        if sparse_filter is not None and not sparse_filter(q[i]):
+            continue
+        lw = 1 if sparse_filter is not None else 0.5
+        plt.plot(
+            np.log(delta_t),
+            np.log(list(partition_results.iloc[i]) / partition_results[1][q[i]]),
+            color="red", linewidth=lw, label=str(q[i])
+        )
+    if legend_kwargs is not None:
+        plt.legend(**legend_kwargs)
+    else:
+        plt.legend(
+            bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+            ncol=6, mode="expand", borderaxespad=0.
+        )
+    if title is not None:
+        plt.title(title)
+    plt.xlabel('ln (delta_t)\n(the natural log of time increments)')
+    plt.ylabel('ln ( Sq(delta_t) )\n(the natural log of the partition function)')
+    plt.show()
 
-plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
-           ncol=6, mode="expand", borderaxespad=0.)
+# 显示部分结果
+plot_partition_function(partition_results, delta_t, q)
 
-plt.xlabel('ln (delta_t)\n(the natural log of time increments)')
-plt.ylabel('ln ( Sq(delta_t) )\n(the natural log of the partition function)')
-
-plt.show()
+# 抽稀画法
+plot_partition_function(
+    partition_results, delta_t, q,
+    sparse_filter=default_sparse_filter,
+    legend_kwargs=dict(
+        bbox_to_anchor=(0., -0.45, 1., .102), loc=3,
+        ncol=5, mode="expand", borderaxespad=0., title="Raw moments"
+    ),
+    title="Partition function for Norway"
+)
 
 # 打印部分结果
 print("\n分区函数 S_q(T, delta_t) DataFrame 预览：")
