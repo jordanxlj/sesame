@@ -118,27 +118,27 @@ else:
 
 # 分区函数实现
 def calc_partition_function(relative_log_returns, delta_t_list, q_list):
-    """
-    relative_log_returns: pd.Series, index为时间，值为相对t0的对数变化率
-    delta_t_list: list, 所有窗口长度
-    q_list: list, 所有q值
-    返回: DataFrame, 行索引为q，列索引为delta_t
-    """
     T = len(relative_log_returns)
+    XT = relative_log_returns.values
     result_matrix = np.zeros((len(q_list), len(delta_t_list)))
-    relative_log_returns_values = relative_log_returns.values
+
     for j, dt in enumerate(delta_t_list):
-        N = T // dt
-        if N < 2:
-            continue  # 分区数太少跳过
+        max_i = int(T / dt)
+        idx1 = np.arange(max_i) * dt
+        idx2 = idx1 + dt
+        
+        # 只保留 idx2 < T 的分区
+        valid = idx2 < T
+        idx1 = idx1[valid]
+        idx2 = idx2[valid]
+        diffs = XT[idx2] - XT[idx1]
+        abs_diffs = np.abs(diffs)
         for k, qv in enumerate(q_list):
-            increments = [abs(relative_log_returns_values[i*dt + dt] - relative_log_returns_values[i*dt])**qv for i in range(N-1)]
-            S_q = np.sum(increments)
-            result_matrix[k, j] = S_q
+            result_matrix[k, j] = np.sum(abs_diffs ** qv)
     df = pd.DataFrame(result_matrix, index=q_list, columns=delta_t_list)
     return df
 
-
+'''
 def partition_function(SIGMA, DELTA, XT, Q):
     print("Calculating the partition function...\nThis step will take quite a while... so strap yourself in...\n")
     SIGMA=[[0 for x in range(len(DELTA))] for y in range(len(Q))]
@@ -175,6 +175,7 @@ plt.xlabel('ln (delta_t)\n(the natural log of time increments)')
 plt.ylabel('ln ( Sq(delta_t) )\n(the natural log of the partition function)')
 
 plt.show()
+'''
 
 # 计算分区函数
 partition_results = calc_partition_function(relative_log_returns_df['Relative_Log_Returns'], delta_t, q)
