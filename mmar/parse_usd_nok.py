@@ -5,6 +5,44 @@ import numpy as np
 import matplotlib.dates as mdates
 from scipy.stats import kstest, shapiro, norm
 
+# 定义q值列表
+q = [0.01,  0.1,   0.2,   0.3,   0.4,   0.5,   0.55,  0.6,   0.65,  0.7,
+     0.75,  0.8,   0.85,  0.9,   0.95,  1.0,   1.05,  1.1,   1.15,  1.2,
+     1.25,  1.3,   1.35,  1.4,   1.45,  1.5,   1.55,  1.6,   1.65,  1.7,
+     1.75,  1.8,   1.81,  1.82,  1.83,  1.84,  1.85,  1.86,  1.87,  1.88,
+     1.89,  1.9,   1.91,  1.92,  1.93,  1.94,  1.95,  1.96,  1.97,  1.98,
+     1.985, 1.99,  1.991, 1.992, 1.993, 1.994, 1.995, 1.996, 1.997, 1.998,
+     1.999, 2.0,   2.001, 2.002, 2.003, 2.004, 2.005, 2.006, 2.007, 2.008,
+     2.009, 2.01,  2.015, 2.02,  2.025, 2.03,  2.04,  2.05,  2.06,  2.07,
+     2.08,  2.09,  2.1,   2.15,  2.2,   2.25,  2.3,   2.35,  2.4,   2.45,
+     2.5,   2.6,   2.7,   2.8,   2.9,   3.0,   3.1,   3.2,   3.3,   3.4,
+     3.5,   3.6,   3.7,   3.8,   3.9,   4.0,   4.5,   5.0,   6.0,   7.0,
+     8.0,   9.0,   10.0,  12.5,  15.0,  17.5,  20.0,  22.5,  25.0,  27.5,
+     30.0]
+
+# 绘制q值的分布直方图
+plt.figure(figsize=(12, 6))
+plt.hist(q, bins=50, edgecolor='black', alpha=0.7)
+plt.title('Distribution of q Values', fontsize=14)
+plt.xlabel('q Value', fontsize=12)
+plt.ylabel('Frequency', fontsize=12)
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# 计算所有因子
+def get_factors(n):
+    factors = []
+    for i in range(1, n + 1):
+        if n % i == 0:
+            factors.append(i)
+    return sorted(factors)
+
+# 计算并打印7560的所有因子
+delta_t = get_factors(7560)
+print("\n7560的所有因子（从小到大）：")
+print(delta_t)
+print(f"\n因子总数：{len(delta_t)}")
+
 # 设置matplotlib的基本样式
 plt.rcParams['figure.facecolor'] = 'white'
 plt.rcParams['axes.facecolor'] = 'white'
