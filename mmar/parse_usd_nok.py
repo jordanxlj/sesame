@@ -116,6 +116,87 @@ if ks_p < 0.05 and shapiro_p < 0.05:
 else:
     print("""结论：P值大于0.05，不能拒绝正态性假设。""")
 
+# 分区函数实现
+def calc_partition_function(relative_log_returns, delta_t_list, q_list):
+    """
+    relative_log_returns: pd.Series, index为时间，值为相对t0的对数变化率
+    delta_t_list: list, 所有窗口长度
+    q_list: list, 所有q值
+    返回: DataFrame, 行索引为q，列索引为delta_t
+    """
+    T = len(relative_log_returns)
+    result_matrix = np.zeros((len(q_list), len(delta_t_list)))
+    relative_log_returns_values = relative_log_returns.values
+    for j, dt in enumerate(delta_t_list):
+        N = T // dt
+        if N < 2:
+            continue  # 分区数太少跳过
+        for k, qv in enumerate(q_list):
+            increments = [abs(relative_log_returns_values[i*dt + dt] - relative_log_returns_values[i*dt])**qv for i in range(N-1)]
+            S_q = np.sum(increments)
+            result_matrix[k, j] = S_q
+    df = pd.DataFrame(result_matrix, index=q_list, columns=delta_t_list)
+    return df
+
+
+def partition_function(SIGMA, DELTA, XT, Q):
+    print("Calculating the partition function...\nThis step will take quite a while... so strap yourself in...\n")
+    SIGMA=[[0 for x in range(len(DELTA))] for y in range(len(Q))]
+    for k in range (0, len(Q)):
+        if k%30==0:
+            print("calculating i=" + str(k) + ' out of ' + str(len(Q)-1))
+        for j in range (0,len(DELTA)):
+            for i in range (0,len(XT)-1):
+                if i < int(len(XT)/DELTA[j]):
+                    SIGMA[k][j]=SIGMA[k][j] + abs(XT[i*DELTA[j]+DELTA[j]]-XT[i*DELTA[j]])**Q[k]
+
+    SIGMA=pd.DataFrame(SIGMA)
+    
+    for i in range (0,len(Q)):
+        SIGMA.rename(index={SIGMA.index[i]:Q[i]}, inplace=True)
+    for i in range (len(DELTA)-1,-1,-1):
+        SIGMA.rename(columns={SIGMA.columns[i]:DELTA[i]}, inplace=True)
+    
+    print("Done! Your partition function is ready!\n")
+    return SIGMA
+sigma = []
+sigma = partition_function(sigma, delta_t, relative_log_returns_df['Relative_Log_Returns'], q)
+print(len(sigma), sigma.iloc[0])
+
+for i in range (0, len(q)):
+    print(i, sigma.iloc[i])
+    plt.plot(np.log(delta_t), np.log(list(sigma.iloc[i])/sigma[1][q[i]]), color="red",linewidth=0.5, label=str(q[i]))
+
+
+plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+           ncol=6, mode="expand", borderaxespad=0.)
+
+plt.xlabel('ln (delta_t)\n(the natural log of time increments)')
+plt.ylabel('ln ( Sq(delta_t) )\n(the natural log of the partition function)')
+
+plt.show()
+
+# 计算分区函数
+partition_results = calc_partition_function(relative_log_returns_df['Relative_Log_Returns'], delta_t, q)
+print(partition_results.iloc[0])
+
+for i in range (0, len(q)):
+    #print(i, partition_results.iloc[i])
+    plt.plot(np.log(delta_t), np.log(list(partition_results.iloc[i])/partition_results[1][q[i]]), color="red",linewidth=0.5, label=str(q[i]))
+
+
+plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+           ncol=6, mode="expand", borderaxespad=0.)
+
+plt.xlabel('ln (delta_t)\n(the natural log of time increments)')
+plt.ylabel('ln ( Sq(delta_t) )\n(the natural log of the partition function)')
+
+plt.show()
+
+# 打印部分结果
+print("\n分区函数 S_q(T, delta_t) DataFrame 预览：")
+print(partition_results.iloc[:5, :5])
+
 # 创建三个子图
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 15), height_ratios=[1, 1, 1])
 fig.subplots_adjust(hspace=0.3)  # 调整子图之间的间距
