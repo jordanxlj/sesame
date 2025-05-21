@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 import matplotlib.dates as mdates
-from scipy.stats import kstest, shapiro, norm
+from scipy.stats import kstest, shapiro, norm, linregress
 
 # 定义q值列表
 q = [0.01,  0.1,   0.2,   0.3,   0.4,   0.5,   0.55,  0.6,   0.65,  0.7,
@@ -317,4 +317,45 @@ print(df.describe())
 print("\n对数差值数据基本统计信息:")
 print(log_returns_df.describe())
 print("\n相对t0时刻的对数变化率数据基本统计信息:")
-print(relative_log_returns_df.describe()) 
+print(relative_log_returns_df.describe())
+
+def scaling_function(partition_results, delta_t, q):
+    """
+    对每个q的分区函数曲线做OLS回归，返回tau(q)数组
+    partition_results: DataFrame, 行为q，列为delta_t
+    delta_t: delta_t列表
+    q: q列表
+    返回: tau_q数组（与q一一对应）
+    """
+    ln_delta_t = np.log(delta_t)
+    tau_q = []
+    for i in range(len(q)):
+        y = np.log(partition_results.iloc[i])
+        x = ln_delta_t
+        slope, intercept, r_value, p_value, std_err = linregress(x, y)
+        tau_q.append(slope)
+    return np.array(tau_q)
+
+tau_q = scaling_function(partition_results, delta_t, q)
+plt.plot(q, tau_q, marker='o')
+plt.xlabel('q')
+plt.ylabel('tau(q)')
+plt.title('Scaling function tau(q)')
+plt.show()
+
+# tau_q为0的左右q值
+def find_zero_crossing(q, tau_q):
+    for i in range(1, len(q)):
+        if tau_q[i-1] * tau_q[i] <= 0:  # 有符号变化
+            return {
+                "q_left": q[i-1], "tau_left": tau_q[i-1],
+                "q_right": q[i], "tau_right": tau_q[i]
+            }
+    return None
+
+zero_cross = find_zero_crossing(q, tau_q)
+if zero_cross:
+    print(f"tau_q为0的左右q值: q_left={zero_cross['q_left']} (tau={zero_cross['tau_left']:.4f}), "
+          f"q_right={zero_cross['q_right']} (tau={zero_cross['tau_right']:.4f})")
+else:
+    print("tau_q没有穿过0。") 
