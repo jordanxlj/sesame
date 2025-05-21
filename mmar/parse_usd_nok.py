@@ -343,19 +343,21 @@ plt.ylabel('tau(q)')
 plt.title('Scaling function tau(q)')
 plt.show()
 
-# tau_q为0的左右q值
-def find_zero_crossing(q, tau_q):
+def estimate_hurst(q, tau_q):
+    # 找到tau_q为0的左右q值
     for i in range(1, len(q)):
-        if tau_q[i-1] * tau_q[i] <= 0:  # 有符号变化
-            return {
-                "q_left": q[i-1], "tau_left": tau_q[i-1],
-                "q_right": q[i], "tau_right": tau_q[i]
-            }
-    return None
+        if tau_q[i-1] * tau_q[i] <= 0:
+            q_left, tau_left = q[i-1], tau_q[i-1]
+            q_right, tau_right = q[i], tau_q[i]
+            # 线性插值求零点
+            q_star = q_left - tau_left * (q_right - q_left) / (tau_right - tau_left)
+            H = 1.0 / q_star
+            return H, q_star, (q_left, tau_left, q_right, tau_right)
+    return None, None, None
 
-zero_cross = find_zero_crossing(q, tau_q)
-if zero_cross:
-    print(f"tau_q为0的左右q值: q_left={zero_cross['q_left']} (tau={zero_cross['tau_left']:.4f}), "
-          f"q_right={zero_cross['q_right']} (tau={zero_cross['tau_right']:.4f})")
+H, q_star, info = estimate_hurst(q, tau_q)
+if H is not None:
+    print(f'Hurst指数 H ≈ {H:.4f} (q* ≈ {q_star:.4f})')
+    print(f'零点区间: q_left={info[0]}, tau_left={info[1]:.4f}; q_right={info[2]}, tau_right={info[3]:.4f}')
 else:
-    print("tau_q没有穿过0。") 
+    print('未找到 tau(q)=0 的零点，无法估算Hurst指数。') 
