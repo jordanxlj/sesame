@@ -399,11 +399,13 @@ def polyfit_multifractal_spectrum(TAU_Q, Q, MIN_Q, MAX_Q):
 
 # 方法1
 alpha1, f_alpha1 = gradient_multifractal_spectrum(q[0:105], tau_q[0:105])
+print("\nNORWAY's gradient estimated alpha zero = " + str(alpha1[0]))
 
 # 方法2
 f_a_NORWAY = polyfit_multifractal_spectrum(tau_q, q, 0, 105)
 alpha2 = f_a_NORWAY['p']
 f_alpha2 = f_a_NORWAY['f(a)']
+print("\nNORWAY's polyfit estimated alpha zero = " + str(alpha2[0]))
 
 plt.figure(figsize=(10, 6))
 plt.plot(alpha1, f_alpha1, marker='o', label='Gradient (spectrum1)')
@@ -412,4 +414,113 @@ plt.xlabel(r'$\alpha$')
 plt.ylabel(r'$f(\alpha)$')
 plt.title('Multifractal spectrum comparison')
 plt.legend()
+plt.show()
+
+def estimate_lognormal_params(alpha, f_alpha, H, b=2):
+    """
+    根据多重分形谱顶点和Hurst指数估计对数正态分布参数lambda和sigma^2
+    alpha: alpha数组
+    f_alpha: f(alpha)数组
+    H: Hurst指数
+    b: 对数基底，默认2
+    返回: lambda_hat, sigma2_hat, alpha_0
+    """
+    idx_max = np.argmax(f_alpha)
+    alpha_0 = alpha[idx_max]
+    lambda_hat = alpha_0 / H
+    sigma2_hat = 2 * (lambda_hat - 1) / np.log(b)
+    return lambda_hat, sigma2_hat, alpha_0
+
+# 用法示例（以梯度法为例）
+lambda_hat, sigma2_hat, alpha_0 = estimate_lognormal_params(alpha2, f_alpha2, H)
+print(f"lambda_hat = {lambda_hat:.4f}")
+print(f"sigma^2_hat = {sigma2_hat:.4f}")
+print(f"alpha_0 = {alpha_0:.4f}")
+
+def generate_lognormal_cascade(k, lambda_hat, sigma2_hat):
+    """
+    生成对数正态二分级联（m0和m1都独立从lognormal生成）
+    k: 级数（总区间数为2^k）
+    lambda_hat: 对数正态分布均值参数
+    sigma2_hat: 对数正态分布方差参数
+    返回: mass数组，长度2^k
+    """
+    n = 2 ** k
+    mass = np.ones(n)
+    for level in range(k):
+        step = 2 ** (k - level - 1)
+        for i in range(0, n, 2 * step):
+            m0_val = np.random.lognormal(mean=lambda_hat, sigma=sigma2_hat)
+            m1_val = np.random.lognormal(mean=lambda_hat, sigma=sigma2_hat)
+            #total = m0_val + m1_val
+            left = i
+            right = i + step
+            mass[left:left+step] *= m0_val #/ total
+            mass[right:right+step] *= m1_val #/ total
+    return mass
+
+# 用法示例
+generated_mass = generate_lognormal_cascade(k=13, lambda_hat=lambda_hat, sigma2_hat=sigma2_hat)
+print(f"生成的对数正态二分级联质量数组长度: {len(generated_mass)}")
+print(f"部分mass: {generated_mass[:10]}")
+
+plt.figure(figsize=(12, 4))
+plt.plot(generated_mass, color='purple')
+plt.xlabel('Index')
+plt.ylabel('Mass value')
+plt.title('Generated lognormal cascade mass (sequence)')
+plt.show()
+
+def lognormal_cascade(k, v,ln_lambda, ln_theta):
+    
+    k = k - 1
+
+    m0 = np.random.lognormal(ln_lambda,ln_theta)
+    m1 = np.random.lognormal(ln_lambda,ln_theta)
+    M = [m0, m1]
+    #print("k:", k, "M:", M)
+    
+    if (k >= 0):
+        d=[0 for x in range(0,2)]
+        for i in range(0,2):
+            d[i] = lognormal_cascade(k, (M[i]*v), ln_lambda, ln_theta)
+        
+        v = d
+
+    return v
+
+def MMAR(K, simulated_H, simulated_lambda, simulated_sigma, original_price_history, magnitude_parameter, GRAPHS, color):
+
+    # --- VARIABLES ---
+    # K
+        # adjust K depending on how many days you want to simulate (e.g. if K=13, you'll simulate 2^13=8192 days)
+    # simulated_H
+        # the Hurst parameter for the fBm process
+    # simulated_lambda
+        # the mean for the lognormal cascade
+    # simulated_sigma
+        # the variance for the lognormal cascade
+    # original_price_history
+        # the price history of the market under study (used for starting the prices from the right time!)
+    # magnitude_parameter
+        # adjust this up or down to change the range of price changes (e.g. if prices are swinging too wildly every day, then adjust this downwards)
+    # GRAPHS
+        # Boolean - either True or False - use True if you want the MMAR to simulate graphs for you
+        
+    # --- MESSAGE ---
+    if GRAPHS == True:
+        print("Performing an MMAR simulation with parameters:\n\nH = " + str(simulated_H) + "\nlambda = " + str(simulated_lambda) + "\nsigma = " + str(simulated_sigma) + "\nfBm magnitude = " + str(magnitude_parameter)+ "\n")
+
+    # --- CASCADE ---
+    new_cascade = list(np.array(lognormal_cascade(k=K, v=1, ln_lambda = simulated_lambda, ln_theta = simulated_sigma)).flat)
+    if GRAPHS == True:
+#         plt.figure(figsize=(24,2))
+        plt.xticks(np.arange(0, 2**(K)+1, 2**(K-3)))
+        plt.title("Binomial Cascade")
+        plt.xlabel("Conventional time\n(days)")
+        plt.ylabel('"Mass"')
+        plt.plot(new_cascade, color=color, linewidth=0.5)
+
+wonderfullife1 = MMAR(13, H, lambda_hat, sigma2_hat, df['Price'], 0.15, True, "blue")
+wonderfullife2 = MMAR(13, 0.43235420116535195, 1.118009759565887, 0.3405041898044085, df['Price'], 0.15, True, "crimson")
 plt.show()
