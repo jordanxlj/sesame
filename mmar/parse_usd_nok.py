@@ -471,6 +471,26 @@ plt.ylabel('Mass value')
 plt.title('Generated lognormal cascade mass (sequence)')
 plt.show()
 
+def trading_time_cdf(k, mass):
+    """
+    将级联μ转换为交易时间CDF（累积和），归一化到总和为1
+    k: 级数（总区间数为2^k）
+    mass: 级联数组
+    返回: cdf（与mass等长的数组）
+    """
+    cdf = np.cumsum(mass)
+    cdf_normalized = 2**k * cdf / cdf[-1]  # 归一化到[0, 1]
+    return cdf_normalized
+
+# 用法示例
+trading_time = trading_time_cdf(k=13, mass=generated_mass)
+plt.figure(figsize=(10, 5))
+plt.plot(trading_time)
+plt.xlabel('Conventional time (days)')
+plt.ylabel('Trading time (normalized to 1)')
+plt.title('Trading time CDF (normalized to 1)')
+plt.show()
+
 def lognormal_cascade(k, v,ln_lambda, ln_theta):
     
     k = k - 1
