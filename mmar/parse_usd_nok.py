@@ -360,4 +360,56 @@ if H is not None:
     print(f'Hurst指数 H ≈ {H:.4f} (q* ≈ {q_star:.4f})')
     print(f'零点区间: q_left={info[0]}, tau_left={info[1]:.4f}; q_right={info[2]}, tau_right={info[3]:.4f}')
 else:
-    print('未找到 tau(q)=0 的零点，无法估算Hurst指数。') 
+    print('未找到 tau(q)=0 的零点，无法估算Hurst指数。')
+
+def gradient_multifractal_spectrum(q, tau_q):
+    """
+    梯度计算估算多分形谱f(alpha)和alpha
+    q: q值数组
+    tau_q: tau(q)数组
+    返回: alpha, f_alpha
+    """
+    # 数值微分求alpha
+    alpha = np.gradient(tau_q, q)
+    f_alpha = q * alpha - tau_q
+    return alpha, f_alpha
+
+def polyfit_multifractal_spectrum(TAU_Q, Q, MIN_Q, MAX_Q):
+    """
+    多项式拟合计算估算多分形谱f(alpha)和alpha
+    """
+    TAU_Q_ESTIMATED = np.polyfit(Q[MIN_Q:MAX_Q], TAU_Q[MIN_Q:MAX_Q], 2)
+    print(TAU_Q_ESTIMATED)
+    F_A = [0 for x in range(len(q)-10)]
+    p = [0 for x in range(len(q)-10)]
+    a = TAU_Q_ESTIMATED[0]
+    b = TAU_Q_ESTIMATED[1]
+    c = TAU_Q_ESTIMATED[2]
+    for i in range(0, len(q)-10):
+        p[i] = 2*a*Q[i]+b
+        F_A[i] = ((p[i]-b)/(2*a))*p[i] - (a*((p[i]-b)/(2*a))**2 + b*((p[i]-b)/(2*a)) + c)
+    print('polyfit_multifractal_spectrum F_A:', F_A)
+    F_A = pd.DataFrame(F_A)
+    F_A.rename(columns={F_A.columns[0]:"f(a)"}, inplace=True)
+    F_A['p'] = p
+    print("Using the range of q's from " + str(Q[MIN_Q]) + " to " + str(Q[MAX_Q]) + ":")
+    print("The estimated parameters for tau(q) are: \n" + str(TAU_Q_ESTIMATED))
+    print("\nThus, the estimated parameters for f(a) are: \n" + str(1/(4*a)) + ", \n"  + str((-2*b)/(4*a)) + ", \n"+ str((-4*a*c+b**2)/(4*a)))
+    return F_A
+
+# 方法1
+alpha1, f_alpha1 = gradient_multifractal_spectrum(q[0:105], tau_q[0:105])
+
+# 方法2
+f_a_NORWAY = polyfit_multifractal_spectrum(tau_q, q, 0, 105)
+alpha2 = f_a_NORWAY['p']
+f_alpha2 = f_a_NORWAY['f(a)']
+
+plt.figure(figsize=(10, 6))
+plt.plot(alpha1, f_alpha1, marker='o', label='Gradient (spectrum1)')
+plt.plot(alpha2, f_alpha2, marker='x', label='Polyfit (spectrum2)')
+plt.xlabel(r'$\alpha$')
+plt.ylabel(r'$f(\alpha)$')
+plt.title('Multifractal spectrum comparison')
+plt.legend()
+plt.show()
