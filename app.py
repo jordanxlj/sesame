@@ -38,7 +38,10 @@ def api_kline():
     df = load_kline(code)
     if df is None:
         return jsonify([])
-    ohlc = df[['time', 'open', 'high', 'low', 'close']].to_dict(orient='records')
+    fields = ['time', 'open', 'high', 'low', 'close']
+    if 'volume' in df.columns:
+        fields.append('volume')
+    ohlc = df[fields].to_dict(orient='records')
     return jsonify(ohlc)
 
 @app.route('/api/indicator')
