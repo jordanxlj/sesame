@@ -16,16 +16,17 @@
     <div class="form-bar">
         <label for="code">股票代码:</label>
         <input id="code" value="HK.09660">
-        <label for="indicator">指标:</label>
-        <select id="indicator">
-            <option value="supertrend">SuperTrend</option>
-        </select>
+        <label>指标:</label>
+        <label><input type="checkbox" class="indicator" value="supertrend" checked>SuperTrend</label>
+        <label><input type="checkbox" class="indicator" value="ma5">MA5</label>
+        <label><input type="checkbox" class="indicator" value="ma10">MA10</label>
         <button onclick="loadChart()">查询</button>
     </div>
     <div id="chart"></div>
     <div id="volume-chart"></div>
     <script>
         let chart, candleSeries, volumeSeries;
+        let indicatorSeries = [];
         function loadChart() {
             document.getElementById('chart').innerHTML = '';
 
@@ -76,47 +77,68 @@
                 volumeSeries.setData(volumeData);
             });
 
-            fetch(`/api/indicator?code=${document.getElementById('code').value}&type=${document.getElementById('indicator').value}`)
-            .then(r => r.json()).then(ind => {
-                // 分段变色不断线：多根LineSeries分段渲染
-                let segments = [];
-                let current = [];
-                let lastTrend = null;
-                ind.forEach((item, idx) => {
-                    if (item.supertrend === null || isNaN(item.supertrend)) {
-                        if (current.length) {
-                            segments.push({ trend: lastTrend, data: current });
-                            current = [];
-                        }
-                        lastTrend = null;
-                        return;
+            // 1. 获取所有选中的指标
+            const selectedIndicators = Array.from(document.querySelectorAll('.indicator:checked')).map(el => el.value);
+            // 2. 清除已有指标线
+            indicatorSeries.filter(Boolean).forEach(series => {
+                try {
+                    chart.removeSeries(series);
+                } catch (e) {}
+            });
+            indicatorSeries = [];
+            // 每次都先清空 marker
+            candleSeries.setMarkers([]);
+            // 3. 叠加每个选中的指标
+            selectedIndicators.forEach(indicator => {
+                fetch(`/api/indicator?code=${document.getElementById('code').value}&type=${indicator}`)
+                .then(r => r.json()).then(ind => {
+                    if (indicator === 'supertrend') {
+                        // 分段变色不断线方案
+                        let segments = [], current = [], lastTrend = null;
+                        ind.forEach(item => {
+                            if (item.supertrend === null || isNaN(item.supertrend)) {
+                                if (current.length) { segments.push({ trend: lastTrend, data: current }); current = []; }
+                                lastTrend = null; return;
+                            }
+                            if (item.trend !== lastTrend && current.length) {
+                                segments.push({ trend: lastTrend, data: current }); current = [];
+                            }
+                            current.push({ time: item.time, value: item.supertrend });
+                            lastTrend = item.trend;
+                        });
+                        if (current.length) segments.push({ trend: lastTrend, data: current });
+                        segments.forEach(seg => {
+                            const s = chart.addLineSeries({
+                                color: seg.trend === 1 ? 'green' : 'red',
+                                lineWidth: 2
+                            });
+                            s.setData(seg.data);
+                            indicatorSeries.push(s);
+                        });
+                        // 买卖信号点
+                        const buyMarkers = ind.filter(item => item.buy === 1)
+                            .map(item => ({ time: item.time, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'Buy' }));
+                        const sellMarkers = ind.filter(item => item.sell === 1)
+                            .map(item => ({ time: item.time, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'Sell' }));
+                        candleSeries.setMarkers([...buyMarkers, ...sellMarkers]);
+                    } else if (indicator.startsWith('ma')) {
+                        // 均线等单色线
+                        const maData = ind.filter(item => item[indicator] !== null && !isNaN(item[indicator]))
+                            .map(item => ({ time: item.time, value: item[indicator] }));
+                        const color = indicator === 'ma5' ? 'blue' : 'orange';
+                        const s = chart.addLineSeries({ color, lineWidth: 1 });
+                        s.setData(maData);
+                        indicatorSeries.push(s);
                     }
-                    if (item.trend !== lastTrend && current.length) {
-                        segments.push({ trend: lastTrend, data: current });
-                        current = [];
-                    }
-                    current.push({ time: item.time, value: item.supertrend });
-                    lastTrend = item.trend;
                 });
-                if (current.length) {
-                    segments.push({ trend: lastTrend, data: current });
-                }
-                // 每段用一根线
-                segments.forEach(seg => {
-                    chart.addLineSeries({
-                        color: seg.trend === 1 ? 'green' : 'red',
-                        lineWidth: 2
-                    }).setData(seg.data);
-                });
-
-                // 买卖信号点
-                const buyMarkers = ind.filter(item => item.buy === 1)
-                    .map(item => ({ time: item.time, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'Buy' }));
-                const sellMarkers = ind.filter(item => item.sell === 1)
-                    .map(item => ({ time: item.time, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'Sell' }));
-                candleSeries.setMarkers([...buyMarkers, ...sellMarkers]);
             });
         }
+        // 绑定checkbox切换事件
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.indicator').forEach(cb => {
+                cb.addEventListener('change', loadChart);
+            });
+        });
         loadChart();
     </script>
 </body>
