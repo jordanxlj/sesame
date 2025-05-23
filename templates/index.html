@@ -78,23 +78,42 @@
 
             fetch(`/api/indicator?code=${document.getElementById('code').value}&type=${document.getElementById('indicator').value}`)
             .then(r => r.json()).then(ind => {
-                // 分段主线
-                const up = ind.filter(item => item.trend === 1 && item.supertrend !== null && !isNaN(item.supertrend))
-                    .map(item => ({ time: item.time, value: item.supertrend }));
-                const dn = ind.filter(item => item.trend === -1 && item.supertrend !== null && !isNaN(item.supertrend))
-                    .map(item => ({ time: item.time, value: item.supertrend }));
-
-                const upSeries = chart.addLineSeries({ color: 'green', lineWidth: 2 });
-                const dnSeries = chart.addLineSeries({ color: 'red', lineWidth: 2 });
-                upSeries.setData(up);
-                dnSeries.setData(dn);
+                // 分段变色不断线：多根LineSeries分段渲染
+                let segments = [];
+                let current = [];
+                let lastTrend = null;
+                ind.forEach((item, idx) => {
+                    if (item.supertrend === null || isNaN(item.supertrend)) {
+                        if (current.length) {
+                            segments.push({ trend: lastTrend, data: current });
+                            current = [];
+                        }
+                        lastTrend = null;
+                        return;
+                    }
+                    if (item.trend !== lastTrend && current.length) {
+                        segments.push({ trend: lastTrend, data: current });
+                        current = [];
+                    }
+                    current.push({ time: item.time, value: item.supertrend });
+                    lastTrend = item.trend;
+                });
+                if (current.length) {
+                    segments.push({ trend: lastTrend, data: current });
+                }
+                // 每段用一根线
+                segments.forEach(seg => {
+                    chart.addLineSeries({
+                        color: seg.trend === 1 ? 'green' : 'red',
+                        lineWidth: 2
+                    }).setData(seg.data);
+                });
 
                 // 买卖信号点
                 const buyMarkers = ind.filter(item => item.buy === 1)
                     .map(item => ({ time: item.time, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'Buy' }));
                 const sellMarkers = ind.filter(item => item.sell === 1)
                     .map(item => ({ time: item.time, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'Sell' }));
-
                 candleSeries.setMarkers([...buyMarkers, ...sellMarkers]);
             });
         }
