@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SuperTrend Chart</title>
+    <script src="/static/lightweight-charts.standalone.production.js"></script>
+    <style>
+        #chart { width: 1000px; height: 600px; }
+        body { font-family: Arial, sans-serif; }
+        .form-bar { margin-bottom: 16px; }
+        label { margin-right: 8px; }
+    </style>
+</head>
+<body>
+    <div class="form-bar">
+        <label for="code">股票代码:</label>
+        <input id="code" value="HK.09660">
+        <label for="indicator">指标:</label>
+        <select id="indicator">
+            <option value="supertrend">SuperTrend</option>
+        </select>
+        <button onclick="loadChart()">查询</button>
+    </div>
+    <div id="chart"></div>
+    <script>
+        let chart, candleSeries;
+        function loadChart() {
+            const chartDiv = document.getElementById('chart');
+            chartDiv.innerHTML = '';
+
+            chart = LightweightCharts.createChart(chartDiv, { width: 1000, height: 600 });
+            candleSeries = chart.addCandlestickSeries();
+
+            fetch(`/api/kline?code=${document.getElementById('code').value}`).then(r => r.json()).then(ohlc => {
+                candleSeries.setData(ohlc);
+            });
+
+            fetch(`/api/indicator?code=${document.getElementById('code').value}&type=${document.getElementById('indicator').value}`)
+            .then(r => r.json()).then(ind => {
+                // 分段主线
+                const up = ind.filter(item => item.trend === 1 && item.supertrend !== null && !isNaN(item.supertrend))
+                    .map(item => ({ time: item.time, value: item.supertrend }));
+                const dn = ind.filter(item => item.trend === -1 && item.supertrend !== null && !isNaN(item.supertrend))
+                    .map(item => ({ time: item.time, value: item.supertrend }));
+
+                const upSeries = chart.addLineSeries({ color: 'green', lineWidth: 2 });
+                const dnSeries = chart.addLineSeries({ color: 'red', lineWidth: 2 });
+                upSeries.setData(up);
+                dnSeries.setData(dn);
+
+                // 买卖信号点
+                const buyMarkers = ind.filter(item => item.buy === 1)
+                    .map(item => ({ time: item.time, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'Buy' }));
+                const sellMarkers = ind.filter(item => item.sell === 1)
+                    .map(item => ({ time: item.time, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'Sell' }));
+
+                candleSeries.setMarkers([...buyMarkers, ...sellMarkers]);
+            });
+        }
+        loadChart();
+    </script>
+</body>
+</html> 
