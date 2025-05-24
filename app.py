@@ -41,6 +41,8 @@ def api_kline():
     fields = ['time', 'open', 'high', 'low', 'close']
     if 'volume' in df.columns:
         fields.append('volume')
+    if 'turnover_rate' in df.columns:
+        fields.append('turnover_rate')
     ohlc = df[fields].to_dict(orient='records')
     return jsonify(ohlc)
 

@@ -44,9 +44,13 @@
             const pct = open ? (change / open * 100).toFixed(2) : '0.00';
             const sign = change >= 0 ? '+' : '';
             
+            // 从数据中获取换手率并转换为百分比
+            const turnoverRate = ohlcData.turnover_rate ? (Number(ohlcData.turnover_rate) * 100).toFixed(2) : '0.00';
+            
             document.getElementById('info-bar').innerHTML =
-                `开=${open.toFixed(2)} 高=${high.toFixed(2)} 低=${low.toFixed(2)} 收=${close.toFixed(2)} ` +
-                `<span style="color:${change>=0?'#26a69a':'#ef5350'}">${sign}${change.toFixed(2)} (${sign}${pct}%)</span>`;
+                `开=${open.toFixed(2)}, 高=${high.toFixed(2)}, 低=${low.toFixed(2)}, 收=${close.toFixed(2)}, ` +
+                `<span style="color:${change>=0?'#26a69a':'#ef5350'}">${sign}${change.toFixed(2)} (${sign}${pct}%)</span>, ` +
+                `换手率=${turnoverRate}%`;
         }
         
         // 示例股票列表（可替换为后端API）
