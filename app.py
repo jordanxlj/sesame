@@ -62,6 +62,22 @@ def api_indicator():
                 if isinstance(v, float) and (v != v):
                     row[k] = None
         return jsonify(data)
+    elif indicator == 'squeeze_momentum':
+        # 获取参数，使用默认值
+        bb_length = int(request.args.get('bb_length', 20))
+        bb_mult = float(request.args.get('bb_mult', 2.0))
+        kc_length = int(request.args.get('kc_length', 20))
+        kc_mult = float(request.args.get('kc_mult', 1.5))
+        use_true_range = request.args.get('use_true_range', 'true').lower() == 'true'
+        
+        sqz = TechAnalysis.squeeze_momentum(df, bb_length, bb_mult, kc_length, kc_mult, use_true_range)
+        sqz = sqz.applymap(lambda x: None if pd.isna(x) else x)
+        data = sqz.to_dict(orient='records')
+        for row in data:
+            for k, v in row.items():
+                if isinstance(v, float) and (v != v):
+                    row[k] = None
+        return jsonify(data)
     return jsonify([])
 
 if __name__ == '__main__':

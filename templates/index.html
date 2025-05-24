@@ -23,6 +23,7 @@
         <label><input type="checkbox" class="indicator" value="supertrend" checked>SuperTrend</label>
         <label><input type="checkbox" class="indicator" value="ma5">MA5</label>
         <label><input type="checkbox" class="indicator" value="ma10">MA10</label>
+        <label><input type="checkbox" class="indicator" value="squeeze_momentum">Squeeze Momentum</label>
         <button onclick="loadChart()">查询</button>
     </div>
     <div id="info-bar" style="font-size:16px; margin-bottom:8px;"></div>
@@ -33,6 +34,8 @@
         let indicatorSeries = [];
         let klineSeries = [];
         let crosshairHandler = null;
+        let isSqueezeChartCreating = false;
+        let loadChartTimeout = null;
         
         // 更新信息栏显示
         function updateInfoBar(ohlcData) {
@@ -68,12 +71,64 @@
             });
             // 绑定checkbox切换事件
             document.querySelectorAll('.indicator').forEach(cb => {
+                cb.removeEventListener('change', loadChart);
                 cb.addEventListener('change', loadChart);
             });
         });
         function loadChart() {
+            // 清除之前的防抖定时器
+            if (loadChartTimeout) {
+                clearTimeout(loadChartTimeout);
+            }
+            
+            // 设置防抖，300ms内只执行最后一次调用
+            loadChartTimeout = setTimeout(() => {
+                executeLoadChart();
+            }, 300);
+        }
+        
+        function executeLoadChart() {
+            // 重置创建标志
+            isSqueezeChartCreating = false;
+            
             document.getElementById('chart').innerHTML = '';
             document.getElementById('info-bar').innerText = '';
+            
+            // 清理之前的Squeeze Momentum图表
+            if (window.squeezeChart) {
+                // 移除时间轴同步事件监听器
+                if (window.squeezeTimeScaleHandler) {
+                    try {
+                        chart.timeScale().unsubscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                    } catch (e) {}
+                    window.squeezeTimeScaleHandler = null;
+                }
+                
+                // 移除所有系列
+                if (window.squeezeMomentumSeries) {
+                    try {
+                        window.squeezeChart.removeSeries(window.squeezeMomentumSeries);
+                    } catch (e) {}
+                    window.squeezeMomentumSeries = null;
+                }
+                if (window.squeezeZeroLineSeries) {
+                    try {
+                        window.squeezeChart.removeSeries(window.squeezeZeroLineSeries);
+                    } catch (e) {}
+                    window.squeezeZeroLineSeries = null;
+                }
+                
+                // 移除图表
+                window.squeezeChart.remove();
+                window.squeezeChart = null;
+            }
+            
+            // 移除DOM元素
+            const existingSqueezeChart = document.getElementById('squeeze-chart');
+            if (existingSqueezeChart) {
+                existingSqueezeChart.remove();
+            }
+            
             let ohlcMap = {}; // code -> ohlc
             klineSeries = [];
             // 创建主图
@@ -182,6 +237,95 @@
                                     const s = chart.addLineSeries({ color, lineWidth: 1 });
                                     s.setData(maData);
                                     indicatorSeries.push(s);
+                                } else if (indicator === 'squeeze_momentum') {
+                                    // 防止重复创建
+                                    if (isSqueezeChartCreating || window.squeezeChart) {
+                                        return;
+                                    }
+                                    isSqueezeChartCreating = true;
+                                    
+                                    // 创建Squeeze Momentum图表
+                                    const squeezeContainer = document.createElement('div');
+                                    squeezeContainer.id = 'squeeze-chart';
+                                    squeezeContainer.style.width = '1000px';
+                                    squeezeContainer.style.height = '200px';
+                                    squeezeContainer.style.marginTop = '8px';
+                                    document.getElementById('volume-chart').parentNode.insertBefore(squeezeContainer, document.getElementById('volume-chart').nextSibling);
+                                    
+                                    window.squeezeChart = LightweightCharts.createChart(squeezeContainer, {
+                                        width: 1000,
+                                        height: 200,
+                                        rightPriceScale: { visible: true },
+                                        leftPriceScale: { visible: false },
+                                        timeScale: { visible: true }
+                                    });
+                                    
+                                    // 处理动量柱状图数据
+                                    const momentumData = ind.filter(item => item.momentum !== null && !isNaN(item.momentum))
+                                        .map(item => ({
+                                            time: item.time,
+                                            value: Number(item.momentum),
+                                            color: item.bar_color === 'lime' ? '#00ff00' : 
+                                                   item.bar_color === 'green' ? '#008000' :
+                                                   item.bar_color === 'red' ? '#ff0000' : '#800000'
+                                        }));
+                                    
+                                    // 添加动量柱状图
+                                    window.squeezeMomentumSeries = window.squeezeChart.addHistogramSeries({
+                                        priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+                                    });
+                                    window.squeezeMomentumSeries.setData(momentumData);
+                                    
+                                    // 添加零轴线
+                                    const zeroLineData = ind.map(item => ({
+                                        time: item.time,
+                                        value: 0
+                                    }));
+                                    
+                                    window.squeezeZeroLineSeries = window.squeezeChart.addLineSeries({
+                                        color: '#666666',
+                                        lineWidth: 1,
+                                        lineStyle: 2
+                                    });
+                                    window.squeezeZeroLineSeries.setData(zeroLineData);
+                                    
+                                    // 添加挤压状态标记（仅圆点，无文字）
+                                    const squeezeMarkers = [];
+                                    let lastSqueezeState = null;
+                                    
+                                    ind.forEach(item => {
+                                        let currentState = null;
+                                        if (item.squeeze_on === 1) currentState = 'on';
+                                        else if (item.squeeze_off === 1) currentState = 'off';
+                                        else if (item.no_squeeze === 1) currentState = 'no';
+                                        
+                                        // 只在状态变化时添加标记
+                                        if (currentState && currentState !== lastSqueezeState) {
+                                            squeezeMarkers.push({
+                                                time: item.time,
+                                                position: 'inBar',
+                                                color: item.squeeze_color === 'black' ? '#000000' :
+                                                       item.squeeze_color === 'gray' ? '#808080' : '#0000ff',
+                                                shape: 'circle',
+                                                size: 2
+                                            });
+                                            lastSqueezeState = currentState;
+                                        }
+                                    });
+                                    
+                                    window.squeezeMomentumSeries.setMarkers(squeezeMarkers);
+                                    
+                                    // 同步时间轴
+                                    window.squeezeTimeScaleHandler = () => {
+                                        const timeRange = chart.timeScale().getVisibleRange();
+                                        if (timeRange && window.squeezeChart) {
+                                            window.squeezeChart.timeScale().setVisibleRange(timeRange);
+                                        }
+                                    };
+                                    chart.timeScale().subscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                                    
+                                    // 标记创建完成
+                                    isSqueezeChartCreating = false;
                                 }
                             });
                         });
@@ -224,7 +368,7 @@
                 });
             });
         }
-        loadChart();
+        executeLoadChart();
     </script>
 </body>
 </html> 
