@@ -1,11 +1,33 @@
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import os
+import glob
 from indicator.tech_analysis_web import TechAnalysis
 
 app = Flask(__name__)
 
 DATA_DIR = 'indicator'  # 假设csv都在indicator目录
+
+def get_available_stocks():
+    """获取可用的股票代码列表"""
+    stocks = []
+    csv_files = glob.glob(os.path.join(DATA_DIR, '*.csv'))
+    
+    for file_path in csv_files:
+        filename = os.path.basename(file_path)
+        # 解析文件名获取股票代码
+        if filename.endswith('_daily.csv'):
+            code = filename.replace('_daily.csv', '').replace('_', '.')
+        elif filename.endswith('.csv'):
+            code = filename.replace('.csv', '')
+        else:
+            continue
+            
+        # 生成股票名称（这里可以根据实际情况调整）
+        name = f"股票{code}"
+        stocks.append({'code': code, 'name': name})
+    
+    return stocks
 
 def load_kline(code):
     # 支持两种命名
@@ -31,6 +53,18 @@ def load_kline(code):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/api/stocks')
+def api_stocks():
+    """获取股票代码列表"""
+    query = request.args.get('q', '').strip()
+    stocks = get_available_stocks()
+    
+    # 如果有查询参数，进行过滤
+    if query:
+        stocks = [stock for stock in stocks if query.lower() in stock['code'].lower() or query.lower() in stock['name'].lower()]
+    
+    return jsonify(stocks)
 
 @app.route('/api/kline')
 def api_kline():
@@ -71,12 +105,34 @@ def api_indicator():
         use_true_range = request.args.get('use_true_range', 'true').lower() == 'true'
         
         sqz = TechAnalysis.squeeze_momentum(df, bb_length, bb_mult, kc_length, kc_mult, use_true_range)
+        # 确保时间格式一致
+        sqz['time'] = df['time']  # 使用处理后的时间格式
         sqz = sqz.applymap(lambda x: None if pd.isna(x) else x)
         data = sqz.to_dict(orient='records')
         for row in data:
             for k, v in row.items():
                 if isinstance(v, float) and (v != v):
                     row[k] = None
+        return jsonify(data)
+    elif indicator == 'ma5':
+        # 计算5日移动平均线
+        ma5 = df['close'].rolling(window=5).mean()
+        data = []
+        for i, (time, ma) in enumerate(zip(df['time'], ma5)):
+            data.append({
+                'time': time,
+                'ma': None if pd.isna(ma) else float(ma)
+            })
+        return jsonify(data)
+    elif indicator == 'ma10':
+        # 计算10日移动平均线
+        ma10 = df['close'].rolling(window=10).mean()
+        data = []
+        for i, (time, ma) in enumerate(zip(df['time'], ma10)):
+            data.append({
+                'time': time,
+                'ma': None if pd.isna(ma) else float(ma)
+            })
         return jsonify(data)
     return jsonify([])
 

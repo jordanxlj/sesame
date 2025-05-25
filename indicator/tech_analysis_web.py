@@ -124,7 +124,6 @@ class TechAnalysis:
         )
         
         return pd.DataFrame({
-            'time': df['time'],
             'momentum': momentum,
             'squeeze_on': sqz_on.astype(int),
             'squeeze_off': sqz_off.astype(int),
