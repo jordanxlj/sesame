@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SuperTrend Chart</title>
+    <script src="/static/lightweight-charts.standalone.production.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <style>
+        #chart { width: 1000px; height: 400px; }
+        #volume-chart { width: 1000px; height: 200px; margin-top: 8px; }
+        body { font-family: Arial, sans-serif; }
+        .form-bar { margin-bottom: 16px; }
+        label { margin-right: 8px; }
+    </style>
+</head>
+<body>
+    <div class="form-bar">
+        <label for="code">股票代码:</label>
+        <select id="code" multiple="multiple" style="width:300px"></select>
+        <label>指标:</label>
+        <label><input type="checkbox" class="indicator" value="supertrend" checked>SuperTrend</label>
+        <label><input type="checkbox" class="indicator" value="ma5">MA5</label>
+        <label><input type="checkbox" class="indicator" value="ma10">MA10</label>
+        <label><input type="checkbox" class="indicator" value="squeeze_momentum">Squeeze Momentum</label>
+        <button onclick="loadChart()">查询</button>
+        <button onclick="forceSyncCharts()" style="margin-left: 10px;">强制同步图表</button>
+    </div>
+    <div id="info-bar" style="font-size:16px; margin-bottom:8px;"></div>
+    <div id="chart"></div>
+    <div id="volume-chart"></div>
+    <script>
+        let chart, volumeSeries;
+        let indicatorSeries = [];
+        let klineSeries = [];
+        let crosshairHandler = null;
+        let isSqueezeChartCreating = false;
+        let loadChartTimeout = null;
+        
+        // 初始化同步标志
+        window.isUpdatingTimeScale = false;
+        console.log('全局同步标志初始化:', window.isUpdatingTimeScale);
+        
+        // 更新信息栏显示
+        function updateInfoBar(ohlcData) {
+            const open = Number(ohlcData.open);
+            const high = Number(ohlcData.high);
+            const low = Number(ohlcData.low);
+            const close = Number(ohlcData.close);
+            const change = close - open;
+            const pct = open ? (change / open * 100).toFixed(2) : '0.00';
+            const sign = change >= 0 ? '+' : '';
+            
+            // 从数据中获取换手率并转换为百分比
+            const turnoverRate = ohlcData.turnover_rate ? (Number(ohlcData.turnover_rate) * 100).toFixed(2) : '0.00';
+            
+            document.getElementById('info-bar').innerHTML =
+                `开=${open.toFixed(2)}, 高=${high.toFixed(2)}, 低=${low.toFixed(2)}, 收=${close.toFixed(2)}, ` +
+                `<span style="color:${change>=0?'#26a69a':'#ef5350'}">${sign}${change.toFixed(2)} (${sign}${pct}%)</span>, ` +
+                `换手率=${turnoverRate}%`;
+        }
+        
+        // 示例股票列表（可替换为后端API）
+        const stockList = [
+            { id: 'HK.09660', text: '9660 HORIZON ROBOTICS' },
+            { id: 'SZ.000001', text: '000001 平安银行' },
+            { id: 'SH.600519', text: '600519 贵州茅台' }
+            // ...更多
+        ];
+        $(document).ready(function() {
+            $('#code').select2({
+                data: stockList,
+                placeholder: '输入代码/名称搜索',
+                allowClear: true
+            });
+            // 绑定checkbox切换事件
+            document.querySelectorAll('.indicator').forEach(cb => {
+                cb.removeEventListener('change', loadChart);
+                cb.addEventListener('change', loadChart);
+            });
+        });
+        function loadChart() {
+            // 清除之前的防抖定时器
+            if (loadChartTimeout) {
+                clearTimeout(loadChartTimeout);
+            }
+            
+            // 设置防抖，300ms内只执行最后一次调用
+            loadChartTimeout = setTimeout(() => {
+                executeLoadChart();
+            }, 300);
+        }
+        
+        function executeLoadChart() {
+            // 重置创建标志
+            isSqueezeChartCreating = false;
+            
+            // 重置同步标志
+            window.isUpdatingTimeScale = false;
+            
+            document.getElementById('chart').innerHTML = '';
+            document.getElementById('info-bar').innerText = '';
+            
+            // 清理之前的Squeeze Momentum图表
+            if (window.squeezeChart) {
+                // 移除时间轴同步事件监听器
+                if (window.squeezeTimeScaleHandler) {
+                    try {
+                        chart.timeScale().unsubscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                    } catch (e) {}
+                    window.squeezeTimeScaleHandler = null;
+                }
+                
+                if (window.mainTimeScaleHandler) {
+                    try {
+                        window.squeezeChart.timeScale().unsubscribeVisibleTimeRangeChange(window.mainTimeScaleHandler);
+                    } catch (e) {}
+                    window.mainTimeScaleHandler = null;
+                }
+                
+                // 移除所有系列
+                if (window.squeezeMomentumSeries) {
+                    try {
+                        window.squeezeChart.removeSeries(window.squeezeMomentumSeries);
+                    } catch (e) {}
+                    window.squeezeMomentumSeries = null;
+                }
+                if (window.squeezeZeroLineSeries) {
+                    try {
+                        window.squeezeChart.removeSeries(window.squeezeZeroLineSeries);
+                    } catch (e) {}
+                    window.squeezeZeroLineSeries = null;
+                }
+                
+                // 移除图表
+                window.squeezeChart.remove();
+                window.squeezeChart = null;
+            }
+            
+            // 移除DOM元素
+            const existingSqueezeChart = document.getElementById('squeeze-chart');
+            if (existingSqueezeChart) {
+                existingSqueezeChart.remove();
+            }
+            
+            let ohlcMap = {}; // code -> ohlc
+            klineSeries = [];
+            // 创建主图
+            chart = LightweightCharts.createChart(document.getElementById('chart'), {
+                width: 1000,
+                height: 600,
+                rightPriceScale: { visible: true },
+                leftPriceScale: { visible: false },
+                timeScale: {
+                    visible: true,
+                    timeVisible: true,
+                    secondsVisible: false,
+                    borderVisible: true,
+                    rightOffset: 12,
+                    barSpacing: 3,
+                    fixLeftEdge: false,
+                    fixRightEdge: false,
+                    lockVisibleTimeRangeOnResize: true
+                },
+                layout: {
+                    backgroundColor: 'transparent',
+                    textColor: '#333'
+                },
+                grid: {
+                    vertLines: { color: '#e1e1e1' },
+                    horzLines: { color: '#e1e1e1' }
+                }
+            });
+            console.log('主图创建成功');
+            // 成交量（底部副轴）
+            volumeSeries = chart.addHistogramSeries({
+                priceScaleId: 'volume',
+                priceFormat: { type: 'volume' },
+                scaleMargins: { top: 0.8, bottom: 0 },
+                color: '#26a69a'
+            });
+            chart.priceScale('volume').applyOptions({
+                scaleMargins: { top: 0.8, bottom: 0 },
+                alignLabels: true,
+                borderVisible: true
+            });
+            // 清除已有K线和指标线
+            klineSeries.filter(Boolean).forEach(series => {
+                try { chart.removeSeries(series); } catch (e) {}
+            });
+            klineSeries = [];
+            indicatorSeries.filter(Boolean).forEach(series => {
+                try { chart.removeSeries(series); } catch (e) {}
+            });
+            indicatorSeries = [];
+            // 获取多选股票
+            const codes = $('#code').val() || [];
+            // 1. 获取所有选中的指标
+            const selectedIndicators = Array.from(document.querySelectorAll('.indicator:checked')).map(el => el.value);
+            // 2. 叠加每只股票K线和指标
+            codes.forEach((code, idx) => {
+                fetch(`/api/kline?code=${code}`).then(r => r.json()).then(ohlc => {
+                    console.log(`加载股票 ${code} 的K线数据，数据点数量:`, ohlc.length);
+                    if (ohlc.length > 0) {
+                        console.log(`${code} 数据时间范围:`, {
+                            from: ohlc[0].time,
+                            to: ohlc[ohlc.length - 1].time
+                        });
+                    }
+                    
+                    ohlcMap[code] = ohlc;
+                    
+                    // 保存第一只股票的数据到全局变量，供crosshairHandler使用
+                    if (idx === 0) {
+                        window.currentOhlcData = ohlc;
+                    }
+                    
+                    // K线
+                    const candleSeries = chart.addCandlestickSeries({
+                        priceScaleId: 'right',
+                        scaleMargins: { top: 0.2, bottom: 0.3 },
+                        upColor: idx === 0 ? '#26a69a' : '#2196f3',
+                        downColor: idx === 0 ? '#ef5350' : '#9c27b0',
+                        borderUpColor: idx === 0 ? '#26a69a' : '#2196f3',
+                        borderDownColor: idx === 0 ? '#ef5350' : '#9c27b0',
+                        wickUpColor: idx === 0 ? '#26a69a' : '#2196f3',
+                        wickDownColor: idx === 0 ? '#ef5350' : '#9c27b0'
+                    });
+                    candleSeries.setData(ohlc);
+                    klineSeries.push(candleSeries);
+                    // 成交量只显示第一只股票的
+                    if (idx === 0) {
+                        const volumeData = ohlc.map(bar => ({
+                            time: bar.time,
+                            value: Number(bar.volume),
+                            color: bar.close >= bar.open ? '#26a69a' : '#ef5350'
+                        }));
+                        volumeSeries.setData(volumeData);
+                    }
+                    // 指标叠加（只对第一只股票做示例，可扩展）
+                    if (idx === 0) {
+                        // 清空 marker
+                        candleSeries.setMarkers([]);
+                        selectedIndicators.forEach(indicator => {
+                            fetch(`/api/indicator?code=${code}&type=${indicator}`)
+                            .then(r => r.json()).then(ind => {
+                                if (indicator === 'supertrend') {
+                                    let segments = [], current = [], lastTrend = null;
+                                    ind.forEach(item => {
+                                        if (item.supertrend === null || isNaN(item.supertrend)) {
+                                            if (current.length) { segments.push({ trend: lastTrend, data: current }); current = []; }
+                                            lastTrend = null; return;
+                                        }
+                                        if (item.trend !== lastTrend && current.length) {
+                                            segments.push({ trend: lastTrend, data: current }); current = [];
+                                        }
+                                        current.push({ time: item.time, value: item.supertrend });
+                                        lastTrend = item.trend;
+                                    });
+                                    if (current.length) segments.push({ trend: lastTrend, data: current });
+                                    segments.forEach(seg => {
+                                        const s = chart.addLineSeries({
+                                            color: seg.trend === 1 ? 'green' : 'red',
+                                            lineWidth: 2
+                                        });
+                                        s.setData(seg.data);
+                                        indicatorSeries.push(s);
+                                    });
+                                    // 买卖信号点
+                                    const buyMarkers = ind.filter(item => item.buy === 1)
+                                        .map(item => ({ time: item.time, position: 'belowBar', color: 'green', shape: 'arrowUp', text: 'Buy' }));
+                                    const sellMarkers = ind.filter(item => item.sell === 1)
+                                        .map(item => ({ time: item.time, position: 'aboveBar', color: 'red', shape: 'arrowDown', text: 'Sell' }));
+                                    candleSeries.setMarkers([...buyMarkers, ...sellMarkers]);
+                                } else if (indicator.startsWith('ma')) {
+                                    const maData = ind.filter(item => item[indicator] !== null && !isNaN(item[indicator]))
+                                        .map(item => ({ time: item.time, value: item[indicator] }));
+                                    const color = indicator === 'ma5' ? 'blue' : 'orange';
+                                    const s = chart.addLineSeries({ color, lineWidth: 1 });
+                                    s.setData(maData);
+                                    indicatorSeries.push(s);
+                                } else if (indicator === 'squeeze_momentum') {
+                                    // 防止重复创建
+                                    if (isSqueezeChartCreating || window.squeezeChart) {
+                                        return;
+                                    }
+                                    isSqueezeChartCreating = true;
+                                    
+                                    // 创建Squeeze Momentum图表
+                                    const squeezeContainer = document.createElement('div');
+                                    squeezeContainer.id = 'squeeze-chart';
+                                    squeezeContainer.style.width = '1000px';
+                                    squeezeContainer.style.height = '200px';
+                                    squeezeContainer.style.marginTop = '8px';
+                                    document.getElementById('volume-chart').parentNode.insertBefore(squeezeContainer, document.getElementById('volume-chart').nextSibling);
+                                    
+                                    window.squeezeChart = LightweightCharts.createChart(squeezeContainer, {
+                                        width: 1000,
+                                        height: 200,
+                                        rightPriceScale: { visible: true },
+                                        leftPriceScale: { visible: false },
+                                        timeScale: { 
+                                            visible: true,
+                                            timeVisible: true,
+                                            secondsVisible: false,
+                                            borderVisible: true,
+                                            rightOffset: 12,
+                                            barSpacing: 3,
+                                            fixLeftEdge: false,
+                                            fixRightEdge: false,
+                                            lockVisibleTimeRangeOnResize: true
+                                        },
+                                        layout: {
+                                            backgroundColor: 'transparent',
+                                            textColor: '#333'
+                                        },
+                                        grid: {
+                                            vertLines: { color: '#e1e1e1' },
+                                            horzLines: { color: '#e1e1e1' }
+                                        }
+                                    });
+                                    console.log('Squeeze Momentum 图表创建成功');
+                                    
+                                    // 处理动量柱状图数据
+                                    const momentumData = ind.filter(item => item.momentum !== null && !isNaN(item.momentum))
+                                        .map(item => ({
+                                            time: item.time,
+                                            value: Number(item.momentum),
+                                            color: item.bar_color === 'lime' ? '#00ff00' : 
+                                                   item.bar_color === 'green' ? '#008000' :
+                                                   item.bar_color === 'red' ? '#ff0000' : '#800000'
+                                        }));
+                                    console.log('动量数据处理完成，数据点数量:', momentumData.length);
+                                    console.log('动量数据时间范围:', {
+                                        from: momentumData.length > 0 ? momentumData[0].time : null,
+                                        to: momentumData.length > 0 ? momentumData[momentumData.length - 1].time : null
+                                    });
+                                    
+                                    // 添加动量柱状图
+                                    window.squeezeMomentumSeries = window.squeezeChart.addHistogramSeries({
+                                        priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+                                    });
+                                    window.squeezeMomentumSeries.setData(momentumData);
+                                    
+                                    // 添加零轴线
+                                    const zeroLineData = ind.map(item => ({
+                                        time: item.time,
+                                        value: 0
+                                    }));
+                                    
+                                    window.squeezeZeroLineSeries = window.squeezeChart.addLineSeries({
+                                        color: '#666666',
+                                        lineWidth: 1,
+                                        lineStyle: 2
+                                    });
+                                    window.squeezeZeroLineSeries.setData(zeroLineData);
+                                    
+                                    // 添加挤压状态标记（仅圆点，无文字）
+                                    const squeezeMarkers = [];
+                                    let lastSqueezeState = null;
+                                    
+                                    ind.forEach(item => {
+                                        let currentState = null;
+                                        if (item.squeeze_on === 1) currentState = 'on';
+                                        else if (item.squeeze_off === 1) currentState = 'off';
+                                        else if (item.no_squeeze === 1) currentState = 'no';
+                                        
+                                        // 只在状态变化时添加标记
+                                        if (currentState && currentState !== lastSqueezeState) {
+                                            squeezeMarkers.push({
+                                                time: item.time,
+                                                position: 'inBar',
+                                                color: item.squeeze_color === 'black' ? '#000000' :
+                                                       item.squeeze_color === 'gray' ? '#808080' : '#0000ff',
+                                                shape: 'circle',
+                                                size: 2
+                                            });
+                                            lastSqueezeState = currentState;
+                                        }
+                                    });
+                                    
+                                    window.squeezeMomentumSeries.setMarkers(squeezeMarkers);
+                                    
+                                    // 同步时间轴 - 双向联动（优化版）
+                                    let syncTimeout = null;
+                                    
+                                    window.squeezeTimeScaleHandler = (timeRange) => {
+                                        console.log('主图时间轴变化，同步到副图:', timeRange);
+                                        console.log('当前同步标志状态:', window.isUpdatingTimeScale);
+                                        
+                                        if (timeRange && window.squeezeChart) {
+                                            // 如果正在更新，跳过本次同步
+                                            if (window.isUpdatingTimeScale) {
+                                                console.log('跳过主图到副图同步，原因: 正在更新中');
+                                                return;
+                                            }
+                                            
+                                            // 清除之前的同步任务
+                                            if (syncTimeout) {
+                                                clearTimeout(syncTimeout);
+                                                console.log('清除之前的同步任务');
+                                            }
+                                            
+                                            window.isUpdatingTimeScale = true;
+                                            console.log('设置同步标志为true，开始同步主图到副图');
+                                            console.log('要同步的时间范围:', { from: timeRange.from, to: timeRange.to });
+                                            
+                                            syncTimeout = setTimeout(() => {
+                                                try {
+                                                    // 强制设置相同的时间范围
+                                                    window.squeezeChart.timeScale().setVisibleRange({
+                                                        from: timeRange.from,
+                                                        to: timeRange.to
+                                                    });
+                                                    console.log('副图时间范围设置成功');
+                                                    
+                                                    // 强制刷新副图显示
+                                                    setTimeout(() => {
+                                                        window.squeezeChart.timeScale().fitContent();
+                                                        setTimeout(() => {
+                                                            window.squeezeChart.timeScale().setVisibleRange({
+                                                                from: timeRange.from,
+                                                                to: timeRange.to
+                                                            });
+                                                            // 强制重绘
+                                                            window.squeezeChart.resize(1000, 200);
+                                                            console.log('副图强制刷新完成');
+                                                        }, 50);
+                                                    }, 50);
+                                                    
+                                                    // 验证设置结果
+                                                    setTimeout(() => {
+                                                        const actualRange = window.squeezeChart.timeScale().getVisibleRange();
+                                                        console.log('副图实际时间范围:', actualRange);
+                                                        
+                                                        if (actualRange && timeRange) {
+                                                            // 处理时间格式转换
+                                                            const actualFrom = typeof actualRange.from === 'string' ? 
+                                                                new Date(actualRange.from).getTime() / 1000 : actualRange.from;
+                                                            const actualTo = typeof actualRange.to === 'string' ? 
+                                                                new Date(actualRange.to).getTime() / 1000 : actualRange.to;
+                                                            const targetFrom = typeof timeRange.from === 'string' ? 
+                                                                new Date(timeRange.from).getTime() / 1000 : timeRange.from;
+                                                            const targetTo = typeof timeRange.to === 'string' ? 
+                                                                new Date(timeRange.to).getTime() / 1000 : timeRange.to;
+                                                            
+                                                            const fromDiff = Math.abs(actualFrom - targetFrom);
+                                                            const toDiff = Math.abs(actualTo - targetTo);
+                                                            
+                                                            console.log('时间范围差异:', {
+                                                                fromDiff: isNaN(fromDiff) ? '无效' : fromDiff,
+                                                                toDiff: isNaN(toDiff) ? '无效' : toDiff,
+                                                                actualFrom: actualRange.from,
+                                                                actualTo: actualRange.to,
+                                                                targetFrom: timeRange.from,
+                                                                targetTo: timeRange.to,
+                                                                actualFromTimestamp: actualFrom,
+                                                                actualToTimestamp: actualTo,
+                                                                targetFromTimestamp: targetFrom,
+                                                                targetToTimestamp: targetTo
+                                                            });
+                                                        } else {
+                                                            console.log('无法验证时间范围 - 数据无效:', { actualRange, timeRange });
+                                                        }
+                                                    }, 10);
+                                                } catch (e) {
+                                                    console.error('副图时间范围设置失败:', e);
+                                                } finally {
+                                                    window.isUpdatingTimeScale = false;
+                                                    console.log('主图到副图同步完成，标志重置为false');
+                                                }
+                                            }, 50);
+                                        } else {
+                                            console.log('跳过主图到副图同步，原因:', {
+                                                hasTimeRange: !!timeRange,
+                                                hasSqueezeChart: !!window.squeezeChart
+                                            });
+                                        }
+                                    };
+                                    
+                                    window.mainTimeScaleHandler = (timeRange) => {
+                                        console.log('副图时间轴变化，同步到主图:', timeRange);
+                                        console.log('当前同步标志状态:', window.isUpdatingTimeScale);
+                                        
+                                        if (timeRange && chart) {
+                                            // 如果正在更新，跳过本次同步
+                                            if (window.isUpdatingTimeScale) {
+                                                console.log('跳过副图到主图同步，原因: 正在更新中');
+                                                return;
+                                            }
+                                            
+                                            // 清除之前的同步任务
+                                            if (syncTimeout) {
+                                                clearTimeout(syncTimeout);
+                                                console.log('清除之前的同步任务');
+                                            }
+                                            
+                                            window.isUpdatingTimeScale = true;
+                                            console.log('设置同步标志为true，开始同步副图到主图');
+                                            console.log('要同步的时间范围:', { from: timeRange.from, to: timeRange.to });
+                                            
+                                            syncTimeout = setTimeout(() => {
+                                                try {
+                                                    // 强制设置相同的时间范围
+                                                    chart.timeScale().setVisibleRange({
+                                                        from: timeRange.from,
+                                                        to: timeRange.to
+                                                    });
+                                                    console.log('主图时间范围设置成功');
+                                                    
+                                                    // 强制刷新主图显示
+                                                    setTimeout(() => {
+                                                        chart.timeScale().fitContent();
+                                                        setTimeout(() => {
+                                                            chart.timeScale().setVisibleRange({
+                                                                from: timeRange.from,
+                                                                to: timeRange.to
+                                                            });
+                                                            // 强制重绘
+                                                            chart.resize(1000, 600);
+                                                            console.log('主图强制刷新完成');
+                                                        }, 50);
+                                                    }, 50);
+                                                    
+                                                    // 验证设置结果
+                                                    setTimeout(() => {
+                                                        const actualRange = chart.timeScale().getVisibleRange();
+                                                        console.log('主图实际时间范围:', actualRange);
+                                                        
+                                                        if (actualRange && timeRange) {
+                                                            // 处理时间格式转换
+                                                            const actualFrom = typeof actualRange.from === 'string' ? 
+                                                                new Date(actualRange.from).getTime() / 1000 : actualRange.from;
+                                                            const actualTo = typeof actualRange.to === 'string' ? 
+                                                                new Date(actualRange.to).getTime() / 1000 : actualRange.to;
+                                                            const targetFrom = typeof timeRange.from === 'string' ? 
+                                                                new Date(timeRange.from).getTime() / 1000 : timeRange.from;
+                                                            const targetTo = typeof timeRange.to === 'string' ? 
+                                                                new Date(timeRange.to).getTime() / 1000 : timeRange.to;
+                                                            
+                                                            const fromDiff = Math.abs(actualFrom - targetFrom);
+                                                            const toDiff = Math.abs(actualTo - targetTo);
+                                                            
+                                                            console.log('时间范围差异:', {
+                                                                fromDiff: isNaN(fromDiff) ? '无效' : fromDiff,
+                                                                toDiff: isNaN(toDiff) ? '无效' : toDiff,
+                                                                actualFrom: actualRange.from,
+                                                                actualTo: actualRange.to,
+                                                                targetFrom: timeRange.from,
+                                                                targetTo: timeRange.to,
+                                                                actualFromTimestamp: actualFrom,
+                                                                actualToTimestamp: actualTo,
+                                                                targetFromTimestamp: targetFrom,
+                                                                targetToTimestamp: targetTo
+                                                            });
+                                                        } else {
+                                                            console.log('无法验证时间范围 - 数据无效:', { actualRange, timeRange });
+                                                        }
+                                                    }, 10);
+                                                } catch (e) {
+                                                    console.error('主图时间范围设置失败:', e);
+                                                } finally {
+                                                    window.isUpdatingTimeScale = false;
+                                                    console.log('副图到主图同步完成，标志重置为false');
+                                                }
+                                            }, 50);
+                                        } else {
+                                            console.log('跳过副图到主图同步，原因:', {
+                                                hasTimeRange: !!timeRange,
+                                                hasChart: !!chart
+                                            });
+                                        }
+                                    };
+                                    
+                                    // 订阅主图时间轴变化，同步到副图
+                                    console.log('订阅主图时间轴变化事件');
+                                    chart.timeScale().subscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                                    
+                                    // 订阅副图时间轴变化，同步到主图
+                                    console.log('订阅副图时间轴变化事件');
+                                    window.squeezeChart.timeScale().subscribeVisibleTimeRangeChange(window.mainTimeScaleHandler);
+                                    
+                                    // 添加强制重置同步标志的机制（防止标志卡住）
+                                    setInterval(() => {
+                                        if (window.isUpdatingTimeScale) {
+                                            console.log('检测到同步标志可能卡住，强制重置');
+                                            window.isUpdatingTimeScale = false;
+                                        }
+                                    }, 5000); // 每5秒检查一次
+                                    
+                                    // 立即同步当前主图的时间范围到副图
+                                    console.log('开始初始时间范围同步');
+                                    setTimeout(() => {
+                                        try {
+                                            // 确保同步标志为false
+                                            window.isUpdatingTimeScale = false;
+                                            console.log('初始同步 - 重置同步标志为false');
+                                            
+                                            // 临时禁用事件监听器，防止循环同步
+                                            chart.timeScale().unsubscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                                            window.squeezeChart.timeScale().unsubscribeVisibleTimeRangeChange(window.mainTimeScaleHandler);
+                                            console.log('初始同步 - 临时禁用事件监听器');
+                                            
+                                            // 先让主图适应内容
+                                            chart.timeScale().fitContent();
+                                            console.log('初始同步 - 主图适应内容完成');
+                                            
+                                            setTimeout(() => {
+                                                const currentTimeRange = chart.timeScale().getVisibleRange();
+                                                console.log('主图当前时间范围:', currentTimeRange);
+                                                
+                                                if (currentTimeRange && window.squeezeChart) {
+                                                    console.log('设置副图时间范围为:', currentTimeRange);
+                                                    
+                                                    // 强制设置副图与主图完全相同的时间范围
+                                                    window.squeezeChart.timeScale().setVisibleRange({
+                                                        from: currentTimeRange.from,
+                                                        to: currentTimeRange.to
+                                                    });
+                                                    console.log('副图时间范围强制设置完成');
+                                                    
+                                                    // 验证同步结果
+                                                    setTimeout(() => {
+                                                        const mainRange = chart.timeScale().getVisibleRange();
+                                                        const squeezeRange = window.squeezeChart.timeScale().getVisibleRange();
+                                                        console.log('同步验证 - 主图范围:', mainRange);
+                                                        console.log('同步验证 - 副图范围:', squeezeRange);
+                                                        
+                                                        if (mainRange && squeezeRange && 
+                                                            typeof mainRange.from === 'number' && typeof mainRange.to === 'number' &&
+                                                            typeof squeezeRange.from === 'number' && typeof squeezeRange.to === 'number') {
+                                                            
+                                                            const fromDiff = Math.abs(mainRange.from - squeezeRange.from);
+                                                            const toDiff = Math.abs(mainRange.to - squeezeRange.to);
+                                                            const isSync = fromDiff < 0.1 && toDiff < 0.1;
+                                                            
+                                                            console.log('时间轴同步状态:', isSync ? '成功' : '失败');
+                                                            console.log('时间范围差异:', { fromDiff, toDiff });
+                                                            console.log('详细时间信息:', {
+                                                                mainFrom: mainRange.from,
+                                                                mainTo: mainRange.to,
+                                                                squeezeFrom: squeezeRange.from,
+                                                                squeezeTo: squeezeRange.to
+                                                            });
+                                                            
+                                                            if (!isSync) {
+                                                                console.log('同步失败，尝试多次强制同步');
+                                                                // 多次尝试强制同步
+                                                                for (let i = 0; i < 3; i++) {
+                                                                    setTimeout(() => {
+                                                                        window.squeezeChart.timeScale().setVisibleRange({
+                                                                            from: mainRange.from,
+                                                                            to: mainRange.to
+                                                                        });
+                                                                        console.log(`第${i+1}次强制同步完成`);
+                                                                        
+                                                                        if (i === 2) {
+                                                                            // 最后一次验证
+                                                                            setTimeout(() => {
+                                                                                const finalSqueezeRange = window.squeezeChart.timeScale().getVisibleRange();
+                                                                                console.log('最终副图范围:', finalSqueezeRange);
+                                                                                if (finalSqueezeRange && 
+                                                                                    typeof finalSqueezeRange.from === 'number' && 
+                                                                                    typeof finalSqueezeRange.to === 'number') {
+                                                                                    const finalFromDiff = Math.abs(mainRange.from - finalSqueezeRange.from);
+                                                                                    const finalToDiff = Math.abs(mainRange.to - finalSqueezeRange.to);
+                                                                                    console.log('最终时间范围差异:', { fromDiff: finalFromDiff, toDiff: finalToDiff });
+                                                                                    console.log('最终同步状态:', (finalFromDiff < 0.1 && finalToDiff < 0.1) ? '成功' : '失败');
+                                                                                } else {
+                                                                                    console.log('最终验证失败 - 无效的时间范围');
+                                                                                }
+                                                                            }, 100);
+                                                                        }
+                                                                    }, i * 100);
+                                                                }
+                                                            }
+                                                        } else {
+                                                            // 处理时间格式可能不一致的情况
+                                                            if (mainRange && squeezeRange) {
+                                                                // 转换时间格式进行比较
+                                                                const mainFrom = typeof mainRange.from === 'string' ? 
+                                                                    new Date(mainRange.from).getTime() / 1000 : mainRange.from;
+                                                                const mainTo = typeof mainRange.to === 'string' ? 
+                                                                    new Date(mainRange.to).getTime() / 1000 : mainRange.to;
+                                                                const squeezeFrom = typeof squeezeRange.from === 'string' ? 
+                                                                    new Date(squeezeRange.from).getTime() / 1000 : squeezeRange.from;
+                                                                const squeezeTo = typeof squeezeRange.to === 'string' ? 
+                                                                    new Date(squeezeRange.to).getTime() / 1000 : squeezeRange.to;
+                                                                
+                                                                if (!isNaN(mainFrom) && !isNaN(mainTo) && !isNaN(squeezeFrom) && !isNaN(squeezeTo)) {
+                                                                    const fromDiff = Math.abs(mainFrom - squeezeFrom);
+                                                                    const toDiff = Math.abs(mainTo - squeezeTo);
+                                                                    const isSync = fromDiff < 86400 && toDiff < 86400; // 1天的秒数
+                                                                    
+                                                                    console.log('时间轴同步状态(格式转换后):', isSync ? '成功' : '失败');
+                                                                    console.log('时间范围差异(秒):', { fromDiff, toDiff });
+                                                                    console.log('详细时间信息(转换后):', {
+                                                                        mainFrom: mainRange.from,
+                                                                        mainTo: mainRange.to,
+                                                                        squeezeFrom: squeezeRange.from,
+                                                                        squeezeTo: squeezeRange.to,
+                                                                        mainFromTimestamp: mainFrom,
+                                                                        mainToTimestamp: mainTo,
+                                                                        squeezeFromTimestamp: squeezeFrom,
+                                                                        squeezeToTimestamp: squeezeTo
+                                                                    });
+                                                                    
+                                                                    if (isSync) {
+                                                                        alert('图表同步成功！');
+                                                                    } else {
+                                                                        alert(`图表同步失败！时间差异: from=${(fromDiff/86400).toFixed(2)}天, to=${(toDiff/86400).toFixed(2)}天`);
+                                                                    }
+                                                                } else {
+                                                                    console.log('时间格式转换失败');
+                                                                    alert('图表同步失败 - 时间格式转换失败');
+                                                                }
+                                                            } else {
+                                                                console.log('同步验证失败 - 无效的时间范围数据:', {
+                                                                    mainRange,
+                                                                    squeezeRange,
+                                                                    mainRangeValid: !!(mainRange && typeof mainRange.from === 'number' && typeof mainRange.to === 'number'),
+                                                                    squeezeRangeValid: !!(squeezeRange && typeof squeezeRange.from === 'number' && typeof squeezeRange.to === 'number')
+                                                                });
+                                                                alert('图表同步失败 - 无效的时间范围数据，请检查控制台日志');
+                                                            }
+                                                        }
+                                                        
+                                                        // 重新启用事件监听器
+                                                        setTimeout(() => {
+                                                            chart.timeScale().subscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                                                            window.squeezeChart.timeScale().subscribeVisibleTimeRangeChange(window.mainTimeScaleHandler);
+                                                            console.log('初始同步 - 重新启用事件监听器');
+                                                            
+                                                            // 确保同步标志重置
+                                                            window.isUpdatingTimeScale = false;
+                                                            console.log('初始同步流程完成，同步标志已重置为false');
+                                                        }, 100);
+                                                    }, 200);
+                                                } catch (e) {
+                                                    console.error('初始时间范围同步失败:', e);
+                                                    // 确保出错时也重置标志和重新启用监听器
+                                                    window.isUpdatingTimeScale = false;
+                                                    try {
+                                                        chart.timeScale().subscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                                                        window.squeezeChart.timeScale().subscribeVisibleTimeRangeChange(window.mainTimeScaleHandler);
+                                                    } catch (e2) {
+                                                        console.error('重新启用事件监听器失败:', e2);
+                                                    }
+                                                }
+                                            }, 200);
+                                            
+                                            // 标记创建完成
+                                            isSqueezeChartCreating = false;
+                                        } catch (e) {
+                                            console.error('初始时间范围同步失败:', e);
+                                            // 确保出错时也重置标志和重新启用监听器
+                                            window.isUpdatingTimeScale = false;
+                                            try {
+                                                chart.timeScale().subscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                                                window.squeezeChart.timeScale().subscribeVisibleTimeRangeChange(window.mainTimeScaleHandler);
+                                            } catch (e2) {
+                                                console.error('重新启用事件监听器失败:', e2);
+                                            }
+                                        }
+                                    }, 200);
+                                }
+                            });
+                        });
+                    }
+                    // 只在主K线加载后绑定 crosshairMove
+                    if (idx === 0) {
+                        if (crosshairHandler) chart.unsubscribeCrosshairMove(crosshairHandler);
+                        crosshairHandler = param => {
+                            if (!param || !param.time) {
+                                document.getElementById('info-bar').innerText = '';
+                                return;
+                            }
+                            
+                            // 优先使用seriesPrices获取数据
+                            if (param.seriesPrices) {
+                                for (const value of param.seriesPrices.values()) {
+                                    if (value && typeof value.open !== 'undefined' && 
+                                        typeof value.high !== 'undefined' && 
+                                        typeof value.low !== 'undefined' && 
+                                        typeof value.close !== 'undefined') {
+                                        updateInfoBar(value);
+                                        return;
+                                    }
+                                }
+                            }
+                            
+                            // 备用方法：从原始数据中查找
+                            if (window.currentOhlcData) {
+                                const dataPoint = window.currentOhlcData.find(item => item.time === param.time);
+                                if (dataPoint) {
+                                    updateInfoBar(dataPoint);
+                                    return;
+                                }
+                            }
+                            
+                            document.getElementById('info-bar').innerText = '';
+                        };
+                        chart.subscribeCrosshairMove(crosshairHandler);
+                    }
+                });
+            });
+        }
+        executeLoadChart();
+        
+        // 强制同步图表函数
+        function forceSyncCharts() {
+            if (!chart || !window.squeezeChart) {
+                console.log('无法强制同步：图表未创建');
+                alert('请先加载图表');
+                return;
+            }
+            
+            console.log('开始手动强制同步图表');
+            
+            // 临时禁用事件监听器
+            if (window.squeezeTimeScaleHandler) {
+                chart.timeScale().unsubscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+            }
+            if (window.mainTimeScaleHandler) {
+                window.squeezeChart.timeScale().unsubscribeVisibleTimeRangeChange(window.mainTimeScaleHandler);
+            }
+            
+            // 重置同步标志
+            window.isUpdatingTimeScale = false;
+            
+            // 获取主图当前时间范围
+            const mainRange = chart.timeScale().getVisibleRange();
+            console.log('主图当前范围:', mainRange);
+            
+            if (mainRange) {
+                // 强制设置副图时间范围
+                window.squeezeChart.timeScale().setVisibleRange({
+                    from: mainRange.from,
+                    to: mainRange.to
+                });
+                console.log('副图时间范围已强制设置');
+                
+                // 验证同步结果
+                setTimeout(() => {
+                    const squeezeRange = window.squeezeChart.timeScale().getVisibleRange();
+                    console.log('副图实际范围:', squeezeRange);
+                    
+                    if (mainRange && squeezeRange && 
+                        typeof mainRange.from === 'number' && typeof mainRange.to === 'number' &&
+                        typeof squeezeRange.from === 'number' && typeof squeezeRange.to === 'number') {
+                        
+                        const fromDiff = Math.abs(mainRange.from - squeezeRange.from);
+                        const toDiff = Math.abs(mainRange.to - squeezeRange.to);
+                        const isSync = fromDiff < 0.1 && toDiff < 0.1;
+                        
+                        console.log('强制同步结果:', isSync ? '成功' : '失败');
+                        console.log('时间范围差异:', { fromDiff, toDiff });
+                        console.log('详细时间信息:', {
+                            mainFrom: mainRange.from,
+                            mainTo: mainRange.to,
+                            squeezeFrom: squeezeRange.from,
+                            squeezeTo: squeezeRange.to
+                        });
+                        
+                        if (isSync) {
+                            alert('图表同步成功！');
+                        } else {
+                            alert(`图表同步失败！时间差异: from=${fromDiff.toFixed(2)}, to=${toDiff.toFixed(2)}`);
+                        }
+                    } else {
+                        // 处理时间格式可能不一致的情况
+                        if (mainRange && squeezeRange) {
+                            // 转换时间格式进行比较
+                            const mainFrom = typeof mainRange.from === 'string' ? 
+                                new Date(mainRange.from).getTime() / 1000 : mainRange.from;
+                            const mainTo = typeof mainRange.to === 'string' ? 
+                                new Date(mainRange.to).getTime() / 1000 : mainRange.to;
+                            const squeezeFrom = typeof squeezeRange.from === 'string' ? 
+                                new Date(squeezeRange.from).getTime() / 1000 : squeezeRange.from;
+                            const squeezeTo = typeof squeezeRange.to === 'string' ? 
+                                new Date(squeezeRange.to).getTime() / 1000 : squeezeRange.to;
+                            
+                            if (!isNaN(mainFrom) && !isNaN(mainTo) && !isNaN(squeezeFrom) && !isNaN(squeezeTo)) {
+                                const fromDiff = Math.abs(mainFrom - squeezeFrom);
+                                const toDiff = Math.abs(mainTo - squeezeTo);
+                                const isSync = fromDiff < 86400 && toDiff < 86400; // 1天的秒数
+                                
+                                console.log('强制同步结果(格式转换后):', isSync ? '成功' : '失败');
+                                console.log('时间范围差异(秒):', { fromDiff, toDiff });
+                                console.log('详细时间信息(转换后):', {
+                                    mainFrom: mainRange.from,
+                                    mainTo: mainRange.to,
+                                    squeezeFrom: squeezeRange.from,
+                                    squeezeTo: squeezeRange.to,
+                                    mainFromTimestamp: mainFrom,
+                                    mainToTimestamp: mainTo,
+                                    squeezeFromTimestamp: squeezeFrom,
+                                    squeezeToTimestamp: squeezeTo
+                                });
+                                
+                                if (isSync) {
+                                    alert('图表同步成功！');
+                                } else {
+                                    alert(`图表同步失败！时间差异: from=${(fromDiff/86400).toFixed(2)}天, to=${(toDiff/86400).toFixed(2)}天`);
+                                }
+                            } else {
+                                console.log('时间格式转换失败');
+                                alert('图表同步失败 - 时间格式转换失败');
+                            }
+                        } else {
+                            console.log('同步验证失败 - 无效的时间范围数据:', {
+                                mainRange,
+                                squeezeRange,
+                                mainRangeValid: !!(mainRange && typeof mainRange.from === 'number' && typeof mainRange.to === 'number'),
+                                squeezeRangeValid: !!(squeezeRange && typeof squeezeRange.from === 'number' && typeof squeezeRange.to === 'number')
+                            });
+                            alert('图表同步失败 - 无效的时间范围数据，请检查控制台日志');
+                        }
+                    }
+                    
+                    // 重新启用事件监听器
+                    setTimeout(() => {
+                        if (window.squeezeTimeScaleHandler) {
+                            chart.timeScale().subscribeVisibleTimeRangeChange(window.squeezeTimeScaleHandler);
+                        }
+                        if (window.mainTimeScaleHandler) {
+                            window.squeezeChart.timeScale().subscribeVisibleTimeRangeChange(window.mainTimeScaleHandler);
+                        }
+                        console.log('事件监听器已重新启用');
+                    }, 100);
+                }, 200);
+            }
+        }
+    </script>
+</body>
+</html> 
