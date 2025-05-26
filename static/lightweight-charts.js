@@ -1242,13 +1242,36 @@ class MainChart extends BaseChart {
      * 创建信号标记
      */
     createSignalMarkers(data) {
-        return data.filter(item => item.signal).map(item => ({
-            time: item.time,
-            position: item.signal === 'buy' ? 'belowBar' : 'aboveBar',
-            color: item.signal === 'buy' ? ChartConfig.COLORS.UP : ChartConfig.COLORS.DOWN,
-            shape: item.signal === 'buy' ? 'arrowUp' : 'arrowDown',
-            text: item.signal === 'buy' ? 'B' : 'S'
-        }));
+        const markers = [];
+        
+        data.forEach(item => {
+            // 检查买入信号
+            if (item.buy === 1) {
+                markers.push({
+                    time: item.time,
+                    position: 'belowBar',
+                    color: ChartConfig.COLORS.UP,
+                    shape: 'arrowUp',
+                    text: 'Buy',
+                    size: 1
+                });
+            }
+            
+            // 检查卖出信号
+            if (item.sell === 1) {
+                markers.push({
+                    time: item.time,
+                    position: 'aboveBar',
+                    color: ChartConfig.COLORS.DOWN,
+                    shape: 'arrowDown',
+                    text: 'Sell',
+                    size: 1
+                });
+            }
+        });
+        
+        console.log(`创建了 ${markers.length} 个买卖信号标记`);
+        return markers;
     }
     
     /**
