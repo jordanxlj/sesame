@@ -37,6 +37,20 @@
             background-color: #218838;
             border-color: #1e7e34;
         }
+        .indicator {
+            margin-right: 4px;
+        }
+        .form-bar label {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 12px;
+        }
+        .loading-indicator {
+            display: none;
+            color: #007bff;
+            font-style: italic;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
@@ -51,9 +65,9 @@
         <label><input type="checkbox" class="indicator" value="ma5">MA5</label>
         <label><input type="checkbox" class="indicator" value="ma10">MA10</label>
         <label><input type="checkbox" class="indicator" value="squeeze_momentum">Squeeze Momentum</label>
-        <button onclick="loadChart()">查询</button>
         <button onclick="forceSyncCharts()">强制同步</button>
         <button onclick="fitChartsToData()" class="fit-data-btn" title="自动适配图表到实际数据范围，消除无效留白">适配数据范围</button>
+        <span id="loading-indicator" class="loading-indicator">正在加载图表...</span>
     </div>
     <div id="info-bar" style="font-size:16px; margin-bottom:8px;"></div>
     <div id="chart"></div>
@@ -62,6 +76,7 @@
         // ===== 全局变量 =====
         let chartManager = null;
         window.chartManager = null; // 确保全局可访问
+        let loadTimeout = null; // 防抖定时器
         
         // ===== 初始化 =====
         $(document).ready(function() {
@@ -69,10 +84,20 @@
             chartManager = new ChartManager();
             window.chartManager = chartManager;
             
-            // 初始化股票代码选择器（简化版本）
+            // 初始化股票代码选择器
             $('#code').select2({
                 placeholder: '请选择股票代码',
                 allowClear: true
+            });
+            
+            // 监听股票代码变化
+            $('#code').on('change', function() {
+                autoLoadChart();
+            });
+            
+            // 监听指标变化
+            $('.indicator').on('change', function() {
+                autoLoadChart();
             });
             
             // 动态加载股票列表
@@ -93,18 +118,70 @@
                     });
                     
                     select.trigger('change'); // 通知select2更新
+                    
+                    // 如果有默认选择，自动加载图表
+                    setTimeout(() => {
+                        const currentSelection = select.val();
+                        if (currentSelection && currentSelection.length > 0) {
+                            console.log('检测到默认选择，自动加载图表:', currentSelection);
+                            autoLoadChart();
+                        }
+                    }, 100);
                 })
                 .catch(error => {
                     console.error('加载股票列表失败:', error);
-                    // 如果加载失败，保留默认选项
+                    // 如果加载失败，保留默认选项，并尝试自动加载
+                    setTimeout(() => {
+                        const select = $('#code');
+                        const currentSelection = select.val();
+                        if (currentSelection && currentSelection.length > 0) {
+                            console.log('使用默认选项，自动加载图表:', currentSelection);
+                            autoLoadChart();
+                        }
+                    }, 100);
                 });
         }
         
+        // ===== 自动加载函数 =====
+        function autoLoadChart() {
+            // 清除之前的定时器，实现防抖
+            if (loadTimeout) {
+                clearTimeout(loadTimeout);
+            }
+            
+            // 延迟执行，避免频繁触发
+            loadTimeout = setTimeout(() => {
+                const codes = $('#code').val();
+                
+                // 如果没有选择股票代码，清空图表
+                if (!codes || codes.length === 0) {
+                    clearChart();
+                    return;
+                }
+                
+                loadChart();
+            }, 300); // 300ms防抖延迟
+        }
+        
+        // ===== 清空图表函数 =====
+        function clearChart() {
+            if (chartManager) {
+                chartManager.destroy();
+                chartManager = new ChartManager();
+                window.chartManager = chartManager;
+            }
+            
+            // 清空信息栏
+            document.getElementById('info-bar').innerText = '';
+            console.log('图表已清空');
+        }
+        
         // ===== 图表加载函数 =====
-        function loadChart() {
+        async function loadChart() {
             const codes = $('#code').val();
             if (!codes || codes.length === 0) {
-                alert('请选择至少一个股票代码');
+                console.log('没有选择股票代码，跳过加载');
+                hideLoadingIndicator();
                 return;
             }
             
@@ -112,6 +189,11 @@
             $('.indicator:checked').each(function() {
                 selectedIndicators.push($(this).val());
             });
+            
+            console.log('开始加载图表:', { codes, selectedIndicators });
+            
+            // 显示加载指示器
+            showLoadingIndicator();
             
             // 销毁现有图表
             if (chartManager) {
@@ -126,7 +208,29 @@
             const mainChart = chartManager.createMainChart(document.getElementById('chart'));
             
             // 加载数据
-            chartManager.loadData(codes, selectedIndicators);
+            try {
+                await chartManager.loadData(codes, selectedIndicators);
+                hideLoadingIndicator();
+                console.log('图表加载完成');
+            } catch (error) {
+                hideLoadingIndicator();
+                console.error('图表加载失败:', error);
+            }
+        }
+        
+        // ===== 加载指示器函数 =====
+        function showLoadingIndicator() {
+            const indicator = document.getElementById('loading-indicator');
+            if (indicator) {
+                indicator.style.display = 'inline';
+            }
+        }
+        
+        function hideLoadingIndicator() {
+            const indicator = document.getElementById('loading-indicator');
+            if (indicator) {
+                indicator.style.display = 'none';
+            }
         }
         
         // ===== 兼容性支持 =====
