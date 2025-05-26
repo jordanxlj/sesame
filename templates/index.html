@@ -28,14 +28,15 @@
         button:active { 
             background-color: #dee2e6; 
         }
-        .fit-data-btn {
-            background-color: #28a745;
+        .reset-btn {
+            background-color: #17a2b8;
             color: white;
-            border-color: #28a745;
+            border-color: #17a2b8;
+            font-weight: 500;
         }
-        .fit-data-btn:hover {
-            background-color: #218838;
-            border-color: #1e7e34;
+        .reset-btn:hover {
+            background-color: #138496;
+            border-color: #117a8b;
         }
         .indicator {
             margin-right: 4px;
@@ -65,8 +66,7 @@
         <label><input type="checkbox" class="indicator" value="ma5">MA5</label>
         <label><input type="checkbox" class="indicator" value="ma10">MA10</label>
         <label><input type="checkbox" class="indicator" value="squeeze_momentum">Squeeze Momentum</label>
-        <button onclick="forceSyncCharts()">强制同步</button>
-        <button onclick="fitChartsToData()" class="fit-data-btn" title="自动适配图表到实际数据范围，消除无效留白">适配数据范围</button>
+        <button onclick="resetCharts()" class="reset-btn" title="重置图表：强制同步所有图表并适配到实际数据范围">重置图表</button>
         <span id="loading-indicator" class="loading-indicator">正在加载图表...</span>
     </div>
     <div id="info-bar" style="font-size:16px; margin-bottom:8px;"></div>
@@ -230,6 +230,74 @@
             const indicator = document.getElementById('loading-indicator');
             if (indicator) {
                 indicator.style.display = 'none';
+            }
+        }
+        
+        // ===== 强制同步图表函数 =====
+        function forceSyncCharts() {
+            try {
+                if (window.chartManager && window.chartManager.forceSyncCharts) {
+                    return window.chartManager.forceSyncCharts();
+                } else {
+                    console.warn('ChartManager或forceSyncCharts方法不可用');
+                    return { success: false, message: 'ChartManager不可用' };
+                }
+            } catch (error) {
+                console.error('强制同步失败:', error);
+                return { success: false, message: error.message };
+            }
+        }
+        
+        // ===== 重置图表函数 =====
+        function resetCharts() {
+            try {
+                console.log('开始重置图表...');
+                
+                let syncSuccess = false;
+                let fitSuccess = false;
+                
+                // 1. 强制同步所有图表
+                const syncResult = forceSyncCharts();
+                if (syncResult && syncResult.success) {
+                    syncSuccess = true;
+                    console.log('强制同步成功:', syncResult.message);
+                } else {
+                    console.warn('强制同步失败:', syncResult ? syncResult.message : '未知错误');
+                }
+                
+                // 2. 适配数据范围
+                if (window.fitChartsToData && typeof window.fitChartsToData === 'function') {
+                    window.fitChartsToData();
+                    fitSuccess = true;
+                    console.log('适配数据范围完成');
+                } else if (window.chartManager && window.chartManager.fitAllChartsToData) {
+                    const fitResult = window.chartManager.fitAllChartsToData();
+                    if (fitResult && fitResult.success) {
+                        fitSuccess = true;
+                        console.log('适配数据范围成功:', fitResult.message);
+                    } else {
+                        console.warn('适配数据范围失败:', fitResult ? fitResult.message : '未知错误');
+                    }
+                }
+                
+                // 显示结果提示
+                const successCount = (syncSuccess ? 1 : 0) + (fitSuccess ? 1 : 0);
+                let message = '';
+                
+                if (successCount === 2) {
+                    message = '图表重置完成：已强制同步并适配到数据范围';
+                } else if (successCount === 1) {
+                    message = '图表重置部分完成：' + (syncSuccess ? '已强制同步' : '已适配数据范围');
+                } else {
+                    message = '图表重置失败：请检查控制台日志';
+                }
+                
+                console.log('图表重置完成，成功操作数:', successCount);
+                alert(message);
+                
+            } catch (error) {
+                console.error('重置图表失败:', error);
+                alert('重置图表时发生错误: ' + error.message);
             }
         }
         
