@@ -14,6 +14,29 @@
         body { font-family: Arial, sans-serif; }
         .form-bar { margin-bottom: 16px; }
         label { margin-right: 8px; }
+        button { 
+            padding: 6px 12px; 
+            margin-left: 10px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            background-color: #f8f9fa; 
+            cursor: pointer; 
+        }
+        button:hover { 
+            background-color: #e9ecef; 
+        }
+        button:active { 
+            background-color: #dee2e6; 
+        }
+        .fit-data-btn {
+            background-color: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+        .fit-data-btn:hover {
+            background-color: #218838;
+            border-color: #1e7e34;
+        }
     </style>
 </head>
 <body>
@@ -29,7 +52,8 @@
         <label><input type="checkbox" class="indicator" value="ma10">MA10</label>
         <label><input type="checkbox" class="indicator" value="squeeze_momentum">Squeeze Momentum</label>
         <button onclick="loadChart()">查询</button>
-        <button onclick="forceSyncCharts()" style="margin-left: 10px;">强制同步</button>
+        <button onclick="forceSyncCharts()">强制同步</button>
+        <button onclick="fitChartsToData()" class="fit-data-btn" title="自动适配图表到实际数据范围，消除无效留白">适配数据范围</button>
     </div>
     <div id="info-bar" style="font-size:16px; margin-bottom:8px;"></div>
     <div id="chart"></div>
@@ -37,11 +61,13 @@
     <script>
         // ===== 全局变量 =====
         let chartManager = null;
+        window.chartManager = null; // 确保全局可访问
         
         // ===== 初始化 =====
         $(document).ready(function() {
             // 初始化图表管理器
             chartManager = new ChartManager();
+            window.chartManager = chartManager;
             
             // 初始化股票代码选择器（简化版本）
             $('#code').select2({
@@ -94,6 +120,7 @@
             
             // 重新创建图表管理器
             chartManager = new ChartManager();
+            window.chartManager = chartManager;
             
             // 创建主图
             const mainChart = chartManager.createMainChart(document.getElementById('chart'));

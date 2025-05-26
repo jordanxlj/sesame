@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>图表调试页面</title>
+    <script src="/static/lightweight-charts.standalone.production.js"></script>
+    <script src="/static/lightweight-charts.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-info { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .error { background: #ffe6e6; border-left: 4px solid #ff0000; }
+        .warning { background: #fff3cd; border-left: 4px solid #ffc107; }
+        .success { background: #d4edda; border-left: 4px solid #28a745; }
+        .chart-container { width: 800px; height: 300px; border: 1px solid #ccc; margin: 10px 0; }
+        button { padding: 8px 16px; margin: 5px; }
+        #log { height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; }
+    </style>
+</head>
+<body>
+    <h1>图表调试页面</h1>
+    
+    <div class="debug-info">
+        <h3>调试信息</h3>
+        <p>当前时间: <span id="current-time"></span></p>
+        <p>LightweightCharts版本: <span id="lw-version"></span></p>
+        <p>图表库状态: <span id="lib-status"></span></p>
+    </div>
+    
+    <div>
+        <button onclick="createDebugChart()">创建调试图表</button>
+        <button onclick="testTimeRange()">测试时间范围</button>
+        <button onclick="clearLog()">清除日志</button>
+        <button onclick="exportDebugInfo()">导出调试信息</button>
+    </div>
+    
+    <div id="chart1" class="chart-container"></div>
+    
+    <h3>调试日志</h3>
+    <div id="log"></div>
+    
+    <script>
+        let debugChart = null;
+        let debugLog = [];
+        
+        // 重写console方法以捕获日志
+        const originalConsole = {
+            log: console.log,
+            warn: console.warn,
+            error: console.error,
+            debug: console.debug
+        };
+        
+        function addToLog(level, ...args) {
+            const timestamp = new Date().toLocaleTimeString();
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            
+            debugLog.push({ timestamp, level, message });
+            
+            const logElement = document.getElementById('log');
+            const logEntry = document.createElement('div');
+            logEntry.className = level;
+            logEntry.innerHTML = `<strong>[${timestamp}] ${level.toUpperCase()}:</strong> ${message}`;
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+            
+            // 调用原始console方法
+            originalConsole[level](...args);
+        }
+        
+        console.log = (...args) => addToLog('log', ...args);
+        console.warn = (...args) => addToLog('warn', ...args);
+        console.error = (...args) => addToLog('error', ...args);
+        console.debug = (...args) => addToLog('debug', ...args);
+        
+        // 初始化页面信息
+        function initDebugInfo() {
+            document.getElementById('current-time').textContent = new Date().toLocaleString();
+            
+            if (typeof LightweightCharts !== 'undefined') {
+                document.getElementById('lw-version').textContent = 'LightweightCharts已加载';
+                document.getElementById('lib-status').textContent = '✅ 正常';
+            } else {
+                document.getElementById('lw-version').textContent = '未找到LightweightCharts';
+                document.getElementById('lib-status').textContent = '❌ 错误';
+            }
+        }
+        
+        // 生成测试数据
+        function generateDebugData(count = 20) {
+            const data = [];
+            const startTime = new Date('2024-01-01').getTime() / 1000;
+            
+            for (let i = 0; i < count; i++) {
+                const time = startTime + i * 24 * 60 * 60;
+                const open = 100 + Math.random() * 20;
+                const close = open + (Math.random() - 0.5) * 10;
+                const high = Math.max(open, close) + Math.random() * 5;
+                const low = Math.min(open, close) - Math.random() * 5;
+                
+                data.push({
+                    time: time,
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close
+                });
+            }
+            
+            console.log('生成测试数据:', data.length, '条记录');
+            console.log('数据时间范围:', {
+                from: new Date(data[0].time * 1000).toISOString(),
+                to: new Date(data[data.length - 1].time * 1000).toISOString()
+            });
+            
+            return data;
+        }
+        
+        function createDebugChart() {
+            console.log('=== 开始创建调试图表 ===');
+            
+            try {
+                // 清除现有图表
+                if (debugChart) {
+                    console.log('销毁现有图表');
+                    debugChart.destroy();
+                    debugChart = null;
+                }
+                
+                // 检查容器
+                const container = document.getElementById('chart1');
+                if (!container) {
+                    throw new Error('找不到图表容器');
+                }
+                
+                console.log('创建MainChart实例');
+                debugChart = new MainChart(container);
+                
+                console.log('调用create方法');
+                debugChart.create();
+                
+                console.log('生成测试数据');
+                const testData = generateDebugData(15);
+                
+                console.log('创建K线系列');
+                debugChart.createCandlestickSeries(testData, 0);
+                
+                console.log('=== 调试图表创建完成 ===');
+                
+                // 延迟检查时间范围
+                setTimeout(() => {
+                    const timeRange = debugChart.getTimeRange();
+                    console.log('图表时间范围:', timeRange);
+                }, 500);
+                
+            } catch (error) {
+                console.error('创建调试图表失败:', error);
+            }
+        }
+        
+        function testTimeRange() {
+            console.log('=== 开始测试时间范围 ===');
+            
+            if (!debugChart) {
+                console.error('请先创建调试图表');
+                return;
+            }
+            
+            try {
+                // 测试获取时间范围
+                const currentRange = debugChart.getTimeRange();
+                console.log('当前时间范围:', currentRange);
+                
+                // 测试设置时间范围
+                if (currentRange) {
+                    const testRange = {
+                        from: currentRange.from,
+                        to: currentRange.to
+                    };
+                    
+                    console.log('测试设置相同时间范围:', testRange);
+                    debugChart.setTimeRange(testRange);
+                    
+                    // 验证设置结果
+                    setTimeout(() => {
+                        const newRange = debugChart.getTimeRange();
+                        console.log('设置后的时间范围:', newRange);
+                    }, 100);
+                }
+                
+                // 测试适配功能
+                console.log('测试fitContentToData');
+                debugChart.fitContentToData();
+                
+            } catch (error) {
+                console.error('测试时间范围失败:', error);
+            }
+        }
+        
+        function clearLog() {
+            debugLog = [];
+            document.getElementById('log').innerHTML = '';
+        }
+        
+        function exportDebugInfo() {
+            const debugInfo = {
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                logs: debugLog,
+                chartInfo: debugChart ? {
+                    id: debugChart.id,
+                    isDataLoaded: debugChart.isDataLoaded,
+                    seriesCount: debugChart.series.length
+                } : null
+            };
+            
+            const blob = new Blob([JSON.stringify(debugInfo, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `chart-debug-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('load', () => {
+            initDebugInfo();
+            console.log('调试页面已加载');
+        });
+        
+        // 捕获未处理的错误
+        window.addEventListener('error', (event) => {
+            console.error('未处理的错误:', event.error);
+        });
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('未处理的Promise拒绝:', event.reason);
+        });
+    </script>
+</body>
+</html> 

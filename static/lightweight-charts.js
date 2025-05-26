@@ -34,11 +34,13 @@ const ChartConfig = {
             timeVisible: true,
             secondsVisible: false,
             borderVisible: true,
-            rightOffset: 12,
-            barSpacing: 3,
+            rightOffset: 5,      // 减少右侧偏移，避免留白
+            barSpacing: 6,       // 适中的柱间距
             fixLeftEdge: false,
             fixRightEdge: false,
-            lockVisibleTimeRangeOnResize: true
+            lockVisibleTimeRangeOnResize: true,
+            // 自动适配数据范围的配置
+            autoFitContent: true
         }
     },
     
@@ -50,11 +52,13 @@ const ChartConfig = {
             timeVisible: true,
             secondsVisible: false,
             borderVisible: true,
-            rightOffset: 12,
-            barSpacing: 3,
+            rightOffset: 5,      // 减少右侧偏移，避免留白
+            barSpacing: 6,       // 适中的柱间距
             fixLeftEdge: false,
             fixRightEdge: false,
-            lockVisibleTimeRangeOnResize: true
+            lockVisibleTimeRangeOnResize: true,
+            // 自动适配数据范围的配置
+            autoFitContent: true
         }
     },
     
@@ -112,9 +116,30 @@ const ChartUtils = {
      * 时间格式转换
      */
     convertTimeToNumber(time) {
-        if (typeof time === 'number') return time;
-        if (typeof time === 'string') return new Date(time).getTime() / 1000;
-        return time;
+        if (time == null) {
+            console.debug('时间转换: 输入为null或undefined');
+            return NaN;
+        }
+        
+        if (typeof time === 'number') {
+            if (isNaN(time)) {
+                console.debug('时间转换: 输入数字为NaN');
+                return NaN;
+            }
+            return time;
+        }
+        
+        if (typeof time === 'string') {
+            const timestamp = new Date(time).getTime() / 1000;
+            if (isNaN(timestamp)) {
+                console.debug('时间转换: 字符串转换失败', time);
+                return NaN;
+            }
+            return timestamp;
+        }
+        
+        console.debug('时间转换: 未知类型', typeof time, time);
+        return NaN;
     },
     
     /**
@@ -147,6 +172,47 @@ const ChartUtils = {
         if (spanRatio < ChartConfig.SYNC.ZOOM_THRESHOLD.IN) return 'zoom-in';
         if (spanRatio > ChartConfig.SYNC.ZOOM_THRESHOLD.OUT) return 'zoom-out';
         return 'pan';
+    },
+    
+    /**
+     * 过滤有效数据，移除空值和无效值
+     */
+    filterValidData(data) {
+        if (!Array.isArray(data)) return [];
+        
+        return data.filter(item => {
+            // 检查时间字段
+            if (!item.time) return false;
+            
+            // 检查数值字段
+            if (typeof item.value !== 'undefined') {
+                return item.value !== null && !isNaN(item.value);
+            }
+            
+            // 检查OHLC数据
+            if (typeof item.open !== 'undefined') {
+                return item.open !== null && !isNaN(item.open) &&
+                       item.high !== null && !isNaN(item.high) &&
+                       item.low !== null && !isNaN(item.low) &&
+                       item.close !== null && !isNaN(item.close);
+            }
+            
+            return true;
+        });
+    },
+    
+    /**
+     * 获取数据的实际时间范围
+     */
+    getDataActualRange(data) {
+        const validData = this.filterValidData(data);
+        if (validData.length === 0) return null;
+        
+        const times = validData.map(item => this.convertTimeToNumber(item.time));
+        return {
+            from: Math.min(...times),
+            to: Math.max(...times)
+        };
     }
 };
 
@@ -209,7 +275,17 @@ class SyncManager {
      * 更新全局时间范围
      */
     updateGlobalTimeRange(timeRange, source) {
-        if (this.isUpdatingFromGlobal) return;
+        if (this.isUpdatingFromGlobal) {
+            console.debug('同步管理器: 正在更新中，跳过本次更新');
+            return;
+        }
+        
+        if (!timeRange) {
+            console.warn('同步管理器: 时间范围为空，跳过更新');
+            return;
+        }
+        
+        console.log('同步管理器: 开始更新全局时间范围', { timeRange, source });
         
         this.globalTimeRange = timeRange;
         this.isUpdatingFromGlobal = true;
@@ -217,11 +293,13 @@ class SyncManager {
         try {
             // 通知所有注册的图表进行同步
             ChartRegistry.syncAll(timeRange, source);
+            console.log('同步管理器: 全局同步完成');
         } catch (error) {
-            console.error('同步过程中发生错误:', error);
+            console.error('同步管理器: 同步过程中发生错误:', error);
         } finally {
             setTimeout(() => {
                 this.isUpdatingFromGlobal = false;
+                console.debug('同步管理器: 更新标志已重置');
             }, 100);
         }
     }
@@ -325,6 +403,11 @@ class BaseChart {
             ...options
         };
         
+        // 适配状态管理
+        this.isDataLoaded = false;
+        this.lastFitTime = 0;
+        this.fitThrottleDelay = 100; // 适配节流延迟
+        
         // 注册到图表注册器
         ChartRegistry.register(this.id, this);
     }
@@ -338,8 +421,31 @@ class BaseChart {
         }
         
         this.chart = LightweightCharts.createChart(this.container, this.options);
+        
+        // 立即设置为无留白模式
+        this.setupNoWhitespaceMode();
+        
         this.onCreated();
         return this.chart;
+    }
+    
+    /**
+     * 设置无留白模式
+     */
+    setupNoWhitespaceMode() {
+        if (!this.chart) return;
+        
+        try {
+            // 确保时间轴配置为无留白模式
+            this.chart.timeScale().applyOptions({
+                rightOffset: 5,
+                barSpacing: 6,
+                fixLeftEdge: false,
+                fixRightEdge: false
+            });
+        } catch (error) {
+            console.warn('设置无留白模式失败:', error);
+        }
     }
     
     /**
@@ -386,6 +492,19 @@ class BaseChart {
         }
         
         this.series.push(series);
+        
+        // 为主要系列（K线和柱状图）添加数据设置监听，自动适配范围
+        if (series && series.setData && (type === 'candlestick' || type === 'histogram')) {
+            const originalSetData = series.setData.bind(series);
+            series.setData = (data) => {
+                originalSetData(data);
+                // 标记数据已加载
+                this.isDataLoaded = true;
+                // 节流适配，避免频繁调用
+                this.throttledFitContent();
+            };
+        }
+        
         return series;
     }
     
@@ -393,12 +512,195 @@ class BaseChart {
      * 设置时间范围
      */
     setTimeRange(timeRange) {
-        if (this.chart && timeRange && this.isValidTimeRange(timeRange)) {
-            try {
-                this.chart.timeScale().setVisibleRange(timeRange);
-            } catch (error) {
-                console.warn('设置时间范围失败:', error, '时间范围:', timeRange);
+        if (!this.chart) {
+            console.warn('图表未创建，无法设置时间范围');
+            return;
+        }
+        
+        if (!timeRange) {
+            console.warn('时间范围为空，跳过设置');
+            return;
+        }
+        
+        if (!this.isValidTimeRange(timeRange)) {
+            console.warn('时间范围无效，跳过设置:', timeRange);
+            return;
+        }
+        
+        try {
+            // 确保时间范围的值不为null
+            const safeTimeRange = {
+                from: timeRange.from,
+                to: timeRange.to
+            };
+            
+            // 验证时间值
+            if (safeTimeRange.from == null || safeTimeRange.to == null) {
+                console.warn('时间范围包含null值，跳过设置:', safeTimeRange);
+                return;
             }
+            
+            this.chart.timeScale().setVisibleRange(safeTimeRange);
+            console.log('时间范围设置成功:', safeTimeRange);
+        } catch (error) {
+            console.error('设置时间范围失败:', error, '时间范围:', timeRange);
+        }
+    }
+    
+    /**
+     * 节流适配内容范围
+     */
+    throttledFitContent() {
+        const now = Date.now();
+        if (now - this.lastFitTime < this.fitThrottleDelay) {
+            return; // 节流中，跳过
+        }
+        
+        this.lastFitTime = now;
+        setTimeout(() => {
+            this.fitContentToData();
+        }, 5);
+    }
+    
+    /**
+     * 自动适配内容范围，消除无效数据留白
+     */
+    fitContentToData() {
+        if (!this.chart || !this.isDataLoaded) return;
+        
+        try {
+            // 使用 fitContent 方法自动适配到实际数据范围
+            this.chart.timeScale().fitContent();
+            console.log('图表已自动适配到数据范围');
+            
+            // 添加一个小的延迟，确保适配完成后进行微调
+            setTimeout(() => {
+                this.optimizeVisibleRange();
+            }, 20);
+        } catch (error) {
+            console.warn('自动适配数据范围失败:', error);
+        }
+    }
+    
+    /**
+     * 优化可见范围，确保数据完全可见且没有过多留白
+     */
+    optimizeVisibleRange() {
+        if (!this.chart) return;
+        
+        try {
+            const currentRange = this.chart.timeScale().getVisibleRange();
+            if (!currentRange) return;
+            
+            // 获取时间轴的逻辑范围
+            const logicalRange = this.chart.timeScale().getVisibleLogicalRange();
+            if (!logicalRange) return;
+            
+            // 计算优化后的范围，减少不必要的留白
+            const optimizedRange = {
+                from: currentRange.from,
+                to: currentRange.to
+            };
+            
+            // 设置优化后的范围
+            this.chart.timeScale().setVisibleRange(optimizedRange);
+            console.log('图表可见范围已优化');
+        } catch (error) {
+            console.warn('优化可见范围失败:', error);
+        }
+    }
+    
+    /**
+     * 获取数据的实际时间范围
+     */
+    getDataTimeRange() {
+        if (!this.chart || this.series.length === 0) return null;
+        
+        try {
+            let minTime = null;
+            let maxTime = null;
+            
+            // 遍历所有系列，找到数据的实际时间范围
+            this.series.forEach(series => {
+                try {
+                    // 注意：LightweightCharts 没有直接获取系列数据的API
+                    // 这里我们使用 fitContent 来让图表自动计算范围
+                } catch (error) {
+                    console.warn('获取系列数据范围失败:', error);
+                }
+            });
+            
+            // 获取当前可见范围作为数据范围的参考
+            const visibleRange = this.chart.timeScale().getVisibleRange();
+            return visibleRange;
+        } catch (error) {
+            console.warn('获取数据时间范围失败:', error);
+            return null;
+        }
+    }
+    
+    /**
+     * 检查是否存在过多的留白
+     */
+    checkForExcessiveWhitespace() {
+        if (!this.chart) return;
+        
+        try {
+            const visibleRange = this.chart.timeScale().getVisibleRange();
+            const logicalRange = this.chart.timeScale().getVisibleLogicalRange();
+            
+            if (!visibleRange || !logicalRange) return;
+            
+            // 计算可见范围和逻辑范围的比例
+            const visibleSpan = ChartUtils.convertTimeToNumber(visibleRange.to) - 
+                               ChartUtils.convertTimeToNumber(visibleRange.from);
+            const logicalSpan = logicalRange.to - logicalRange.from;
+            
+            // 如果可见范围远大于逻辑范围，说明存在过多留白
+            if (logicalSpan > 0 && visibleSpan / logicalSpan > 2) {
+                console.warn('检测到图表存在过多留白，建议使用"适配数据范围"功能');
+                
+                // 可以选择自动适配或提示用户
+                // this.fitContentToData(); // 自动适配
+            }
+        } catch (error) {
+            console.warn('检查留白失败:', error);
+        }
+    }
+    
+    /**
+     * 为数据加载做准备，预设图表状态避免初始留白
+     */
+    prepareForDataLoad() {
+        if (!this.chart) return;
+        
+        try {
+            // 设置时间轴为自动适配模式
+            this.chart.timeScale().applyOptions({
+                rightOffset: 5,  // 减少右侧偏移
+                barSpacing: 6,   // 适中的柱间距
+                fixLeftEdge: false,
+                fixRightEdge: false
+            });
+            
+            console.log('图表已预设为无留白模式');
+        } catch (error) {
+            console.warn('预设图表状态失败:', error);
+        }
+    }
+    
+    /**
+     * 完成数据加载，确保最终显示无留白
+     */
+    finalizeDataLoad() {
+        if (!this.chart || !this.isDataLoaded) return;
+        
+        try {
+            // 最终确保适配正确
+            this.fitContentToData();
+            console.log('数据加载完成，已确保无留白显示');
+        } catch (error) {
+            console.warn('完成数据加载失败:', error);
         }
     }
     
@@ -406,26 +708,59 @@ class BaseChart {
      * 验证时间范围是否有效
      */
     isValidTimeRange(timeRange) {
-        if (!timeRange || typeof timeRange !== 'object') return false;
-        if (!timeRange.from || !timeRange.to) return false;
+        if (!timeRange || typeof timeRange !== 'object') {
+            console.debug('时间范围验证失败: 不是对象或为空');
+            return false;
+        }
+        
+        if (timeRange.from == null || timeRange.to == null) {
+            console.debug('时间范围验证失败: from或to为null');
+            return false;
+        }
         
         const from = ChartUtils.convertTimeToNumber(timeRange.from);
         const to = ChartUtils.convertTimeToNumber(timeRange.to);
         
-        return !isNaN(from) && !isNaN(to) && from < to;
+        if (isNaN(from) || isNaN(to)) {
+            console.debug('时间范围验证失败: 时间转换为NaN', { from, to, originalFrom: timeRange.from, originalTo: timeRange.to });
+            return false;
+        }
+        
+        if (from >= to) {
+            console.debug('时间范围验证失败: from >= to', { from, to });
+            return false;
+        }
+        
+        return true;
     }
     
     /**
      * 获取时间范围
      */
     getTimeRange() {
-        if (!this.chart) return null;
+        if (!this.chart) {
+            console.debug('图表未创建，无法获取时间范围');
+            return null;
+        }
         
         try {
             const range = this.chart.timeScale().getVisibleRange();
-            return this.isValidTimeRange(range) ? range : null;
+            
+            if (!range) {
+                console.debug('获取到的时间范围为空');
+                return null;
+            }
+            
+            // 检查范围是否有效
+            if (this.isValidTimeRange(range)) {
+                console.debug('获取时间范围成功:', range);
+                return range;
+            } else {
+                console.debug('获取到的时间范围无效:', range);
+                return null;
+            }
         } catch (error) {
-            console.warn('获取时间范围失败:', error);
+            console.error('获取时间范围失败:', error);
             return null;
         }
     }
@@ -434,8 +769,25 @@ class BaseChart {
      * 同步时间范围（供同步管理器调用）
      */
     syncTimeRange(timeRange, source) {
-        if (source !== this.getSourceName() && this.isValidTimeRange(timeRange)) {
+        console.debug(`${this.getSourceName()} 收到同步请求，来源: ${source}`, timeRange);
+        
+        // 避免自己同步自己
+        if (source === this.getSourceName()) {
+            console.debug(`${this.getSourceName()} 跳过自身同步`);
+            return;
+        }
+        
+        // 验证时间范围
+        if (!this.isValidTimeRange(timeRange)) {
+            console.warn(`${this.getSourceName()} 收到无效时间范围，跳过同步:`, timeRange);
+            return;
+        }
+        
+        try {
             this.setTimeRange(timeRange);
+            console.debug(`${this.getSourceName()} 同步完成`);
+        } catch (error) {
+            console.error(`${this.getSourceName()} 同步失败:`, error);
         }
     }
     
@@ -542,11 +894,20 @@ class MainChart extends BaseChart {
     async loadData(codes, selectedIndicators) {
         this.clearData();
         
+        // 预先设置图表为适配模式，避免初始留白
+        this.prepareForDataLoad();
+        
         const promises = codes.map((code, idx) => 
             this.loadStockData(code, idx, selectedIndicators)
         );
         
         await Promise.all(promises);
+        
+        // 最终确保所有数据都已正确适配
+        setTimeout(() => {
+            this.finalizeDataLoad();
+            console.log('主图数据加载完成，已确保无留白显示');
+        }, 50);
     }
     
     /**
@@ -747,7 +1108,11 @@ class MainChart extends BaseChart {
             ...colors
         });
         
-        candleSeries.setData(ohlc);
+        // 过滤无效数据后再设置
+        const validData = ChartUtils.filterValidData(ohlc);
+        console.log(`K线数据过滤: 原始${ohlc.length}条 -> 有效${validData.length}条`);
+        
+        candleSeries.setData(validData);
         this.candleSeries.push(candleSeries);
         
         return candleSeries;
@@ -772,12 +1137,15 @@ class MainChart extends BaseChart {
      * 创建成交量系列
      */
     createVolumeSeries(ohlc) {
-        const volumeData = ohlc.map(bar => ({
-            time: bar.time,
-            value: Number(bar.volume),
-            color: bar.close >= bar.open ? ChartConfig.COLORS.UP : ChartConfig.COLORS.DOWN
-        }));
+        const volumeData = ohlc
+            .filter(bar => bar.volume !== null && !isNaN(bar.volume) && Number(bar.volume) > 0)
+            .map(bar => ({
+                time: bar.time,
+                value: Number(bar.volume),
+                color: bar.close >= bar.open ? ChartConfig.COLORS.UP : ChartConfig.COLORS.DOWN
+            }));
         
+        console.log(`成交量数据过滤: 原始${ohlc.length}条 -> 有效${volumeData.length}条`);
         this.volumeSeries.setData(volumeData);
     }
     
@@ -1132,8 +1500,8 @@ class SqueezeChart extends SubChart {
             this.createZeroLineSeries(data);
             this.addSqueezeMarkers(data);
             
-            // 初始同步
-            setTimeout(() => this.initialSync(), 300);
+            // 进行同步
+            setTimeout(() => this.initialSync(), 50);
             
             console.log('Squeeze数据加载和图表创建完成');
         } catch (error) {
@@ -1147,15 +1515,22 @@ class SqueezeChart extends SubChart {
     createMomentumSeries(data) {
         console.log('开始创建动量系列');
         
-        const momentumData = data
-            .filter(item => item.momentum !== null && !isNaN(item.momentum))
-            .map(item => ({
-                time: item.time,
-                value: Number(item.momentum),
-                color: this.getMomentumColor(item.bar_color)
-            }));
+        // 使用工具函数过滤有效数据
+        const validData = ChartUtils.filterValidData(data.map(item => ({
+            time: item.time,
+            value: item.momentum
+        })));
         
-        console.log('过滤后的动量数据长度:', momentumData.length);
+        const momentumData = validData.map(item => {
+            const originalItem = data.find(d => d.time === item.time);
+            return {
+                time: item.time,
+                value: Number(item.value),
+                color: this.getMomentumColor(originalItem?.bar_color)
+            };
+        });
+        
+        console.log(`Squeeze动量数据过滤: 原始${data.length}条 -> 有效${momentumData.length}条`);
         console.log('动量数据样本:', momentumData.slice(0, 3));
         
         if (momentumData.length === 0) {
@@ -1259,40 +1634,46 @@ class SqueezeChart extends SubChart {
      */
     initialSync() {
         if (!this.mainChart) {
-            console.warn('主图未设置，跳过初始同步');
+            console.warn('Squeeze: 主图未设置，保持自适应范围');
             return;
         }
         
         // 延迟执行，确保图表完全初始化
         setTimeout(() => {
             try {
+                console.log('Squeeze: 开始初始同步...');
+                
+                // 获取主图的时间范围进行同步
                 const mainTimeRange = this.mainChart.getTimeRange();
                 if (!mainTimeRange) {
-                    console.warn('无法获取主图时间范围，跳过同步');
+                    console.warn('Squeeze: 无法获取主图时间范围，保持自适应范围');
                     return;
                 }
                 
-                console.log('开始Squeeze初始同步，主图时间范围:', mainTimeRange);
+                console.log('Squeeze: 获取到主图时间范围:', mainTimeRange);
+                
+                // 验证时间范围
+                if (!this.isValidTimeRange(mainTimeRange)) {
+                    console.warn('Squeeze: 主图时间范围无效，保持自适应范围:', mainTimeRange);
+                    return;
+                }
                 
                 const wasUpdating = syncManager.isUpdatingFromGlobal;
                 syncManager.isUpdatingFromGlobal = true;
                 
+                // 直接设置时间范围
                 this.setTimeRange(mainTimeRange);
-                console.log('Squeeze初始同步完成');
+                console.log('Squeeze: 初始同步完成');
                 
                 setTimeout(() => {
                     syncManager.isUpdatingFromGlobal = wasUpdating;
-                }, 100);
+                }, 50);
                 
             } catch (error) {
-                console.error('Squeeze初始同步失败:', error);
-                // 重试一次
-                setTimeout(() => {
-                    console.log('重试Squeeze同步...');
-                    this.initialSync();
-                }, 1000);
+                console.error('Squeeze: 初始同步失败:', error);
+                console.log('Squeeze: 保持自适应状态');
             }
-        }, 500);
+        }, 100); // 增加延迟时间，确保主图完全初始化
     }
     
     getSourceName() {
@@ -1367,6 +1748,40 @@ class ChartManager {
             return { success: false, message: error.message };
         }
     }
+    
+    /**
+     * 适配所有图表到数据范围，消除无效留白
+     */
+    fitAllChartsToData() {
+        try {
+            let successCount = 0;
+            
+            // 适配主图
+            if (this.mainChart && this.mainChart.fitContentToData) {
+                this.mainChart.fitContentToData();
+                successCount++;
+            }
+            
+            // 适配子图
+            this.subCharts.forEach(chart => {
+                if (chart.fitContentToData && typeof chart.fitContentToData === 'function') {
+                    try {
+                        chart.fitContentToData();
+                        successCount++;
+                    } catch (error) {
+                        console.error('子图适配数据范围失败:', error);
+                    }
+                }
+            });
+            
+            return { 
+                success: true, 
+                message: `已成功适配 ${successCount} 个图表到数据范围，消除无效留白` 
+            };
+        } catch (error) {
+            return { success: false, message: error.message };
+        }
+    }
 }
 
 // ================================
@@ -1405,6 +1820,41 @@ window.forceSyncCharts = () => {
         alert('图表同步完成');
     } catch (error) {
         alert(error.message);
+    }
+};
+
+// 新增：自动适配数据范围功能
+window.fitChartsToData = () => {
+    try {
+        // 优先使用全局的 chartManager
+        if (window.chartManager && window.chartManager.fitAllChartsToData) {
+            const result = window.chartManager.fitAllChartsToData();
+            alert(result.message);
+            return;
+        }
+        
+        // 备用方案：直接操作注册的图表
+        const allCharts = ChartRegistry.getAllCharts();
+        let successCount = 0;
+        
+        allCharts.forEach(chart => {
+            if (chart.fitContentToData && typeof chart.fitContentToData === 'function') {
+                try {
+                    chart.fitContentToData();
+                    successCount++;
+                } catch (error) {
+                    console.error('图表适配数据范围失败:', error);
+                }
+            }
+        });
+        
+        if (successCount > 0) {
+            alert(`已成功适配 ${successCount} 个图表到数据范围，消除无效留白`);
+        } else {
+            alert('没有找到可适配的图表');
+        }
+    } catch (error) {
+        alert('适配数据范围时发生错误: ' + error.message);
     }
 };
 

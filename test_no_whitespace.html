@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>无留白图表测试</title>
+    <script src="/static/lightweight-charts.standalone.production.js"></script>
+    <script src="/static/lightweight-charts.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-container { margin-bottom: 20px; }
+        .chart-container { width: 800px; height: 300px; border: 1px solid #ccc; margin: 10px 0; }
+        button { padding: 8px 16px; margin: 5px; }
+        .info { background: #f0f8ff; padding: 10px; margin: 10px 0; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>无留白图表测试</h1>
+    
+    <div class="info">
+        <strong>测试说明：</strong>
+        <ul>
+            <li>图表应该在首次加载时就直接显示为无留白状态</li>
+            <li>不应该出现"先有留白，再适配"的闪烁现象</li>
+            <li>数据应该完全填充图表的可视区域</li>
+        </ul>
+    </div>
+    
+    <div class="test-container">
+        <h3>测试1: 基础K线图表</h3>
+        <div id="chart1" class="chart-container"></div>
+        <button onclick="loadTestChart1()">加载测试数据1</button>
+        <button onclick="fitChart1()">手动适配</button>
+    </div>
+    
+    <div class="test-container">
+        <h3>测试2: 柱状图表</h3>
+        <div id="chart2" class="chart-container"></div>
+        <button onclick="loadTestChart2()">加载测试数据2</button>
+        <button onclick="fitChart2()">手动适配</button>
+    </div>
+    
+    <script>
+        let testChart1 = null;
+        let testChart2 = null;
+        
+        // 生成测试数据
+        function generateTestData(count = 100) {
+            const data = [];
+            const startTime = new Date('2024-01-01').getTime() / 1000;
+            
+            for (let i = 0; i < count; i++) {
+                const time = startTime + i * 24 * 60 * 60; // 每天
+                const open = 100 + Math.random() * 20;
+                const close = open + (Math.random() - 0.5) * 10;
+                const high = Math.max(open, close) + Math.random() * 5;
+                const low = Math.min(open, close) - Math.random() * 5;
+                
+                data.push({
+                    time: time,
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close,
+                    volume: Math.floor(Math.random() * 1000000)
+                });
+            }
+            
+            return data;
+        }
+        
+        function generateHistogramData(count = 100) {
+            const data = [];
+            const startTime = new Date('2024-01-01').getTime() / 1000;
+            
+            for (let i = 0; i < count; i++) {
+                const time = startTime + i * 24 * 60 * 60;
+                const value = (Math.random() - 0.5) * 100;
+                
+                data.push({
+                    time: time,
+                    value: value,
+                    color: value > 0 ? '#26a69a' : '#ef5350'
+                });
+            }
+            
+            return data;
+        }
+        
+        function loadTestChart1() {
+            console.log('开始加载测试图表1...');
+            
+            // 清除现有图表
+            if (testChart1) {
+                testChart1.destroy();
+            }
+            
+            // 创建新图表
+            testChart1 = new MainChart(document.getElementById('chart1'));
+            testChart1.create();
+            
+            // 生成并加载测试数据
+            const testData = generateTestData(50);
+            console.log('测试数据生成完成，数据点数量:', testData.length);
+            
+            // 创建K线系列
+            testChart1.createCandlestickSeries(testData, 0);
+            
+            console.log('测试图表1加载完成');
+        }
+        
+        function loadTestChart2() {
+            console.log('开始加载测试图表2...');
+            
+            // 清除现有图表
+            if (testChart2) {
+                testChart2.destroy();
+            }
+            
+            // 创建新图表
+            testChart2 = new SubChart(document.getElementById('chart2'));
+            testChart2.create();
+            
+            // 生成并加载测试数据
+            const testData = generateHistogramData(50);
+            console.log('柱状图测试数据生成完成，数据点数量:', testData.length);
+            
+            // 创建柱状图系列
+            const series = testChart2.addSeries('histogram', {
+                priceFormat: { type: 'price', precision: 2 }
+            });
+            series.setData(testData);
+            
+            console.log('测试图表2加载完成');
+        }
+        
+        function fitChart1() {
+            if (testChart1) {
+                testChart1.fitContentToData();
+                console.log('手动适配图表1完成');
+            }
+        }
+        
+        function fitChart2() {
+            if (testChart2) {
+                testChart2.fitContentToData();
+                console.log('手动适配图表2完成');
+            }
+        }
+        
+        // 页面加载完成后自动运行测试
+        window.addEventListener('load', () => {
+            console.log('页面加载完成，开始自动测试...');
+            setTimeout(() => {
+                loadTestChart1();
+                setTimeout(() => {
+                    loadTestChart2();
+                }, 500);
+            }, 100);
+        });
+    </script>
+</body>
+</html> 
