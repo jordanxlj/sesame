@@ -70,6 +70,13 @@ const ChartConfig = {
         MA5: '#ff9800',
         MA10: '#9c27b0',
         ZERO_LINE: '#666666',
+        // 买卖信号专用颜色（更醒目）
+        SIGNALS: {
+            BUY: '#00ff00',      // 鲜绿色
+            SELL: '#ff0000',     // 鲜红色
+            BUY_ALT: '#32cd32',  // 备用绿色
+            SELL_ALT: '#dc143c'  // 备用红色
+        },
         SQUEEZE: {
             LIME: '#00ff00',
             GREEN: '#008000',
@@ -1250,10 +1257,10 @@ class MainChart extends BaseChart {
                 markers.push({
                     time: item.time,
                     position: 'belowBar',
-                    color: ChartConfig.COLORS.UP,
+                    color: ChartConfig.COLORS.SIGNALS.BUY,
                     shape: 'arrowUp',
-                    text: 'Buy',
-                    size: 1
+                    text: '🔺BUY',     // 添加箭头符号使其更醒目
+                    size: 3            // 进一步增大标记尺寸
                 });
             }
             
@@ -1262,10 +1269,10 @@ class MainChart extends BaseChart {
                 markers.push({
                     time: item.time,
                     position: 'aboveBar',
-                    color: ChartConfig.COLORS.DOWN,
+                    color: ChartConfig.COLORS.SIGNALS.SELL,
                     shape: 'arrowDown',
-                    text: 'Sell',
-                    size: 1
+                    text: '🔻SELL',    // 添加箭头符号使其更醒目
+                    size: 3            // 进一步增大标记尺寸
                 });
             }
         });
