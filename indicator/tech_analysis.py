@@ -159,7 +159,7 @@ class TechAnalysis:
 
 # 用法示例
 if __name__ == "__main__":
-    loader = DataLoader('HK.09660')
+    loader = DataLoader('HK.02432')
     df = loader.load()
     if df is not None:
         # 需保证有open/high/low/close列，若是富途下载的需重命名
