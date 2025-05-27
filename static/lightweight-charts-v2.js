@@ -857,6 +857,7 @@ class MainChart extends BaseChart {
         this.volumeSeries = null;
         this.candleSeries = [];
         this.indicatorSeries = [];
+        this.stockIndicatorSeries = []; // 存储每只股票的指标系列
         this.currentOhlcData = null;
         this.subCharts = [];
         this.stockInfos = []; // 存储股票信息
@@ -1097,10 +1098,21 @@ class MainChart extends BaseChart {
             });
         }
         
+        // 更新该股票的所有指标系列可见性
+        if (this.stockIndicatorSeries[index]) {
+            this.stockIndicatorSeries[index].forEach(series => {
+                if (series && series.applyOptions) {
+                    series.applyOptions({
+                        visible: this.stockVisibility[index]
+                    });
+                }
+            });
+        }
+        
         // 更新图例
         this.updateStockLegend();
         
-        console.log(`📊 股票 ${this.stockInfos[index].code} 可见性已切换为: ${this.stockVisibility[index]}`);
+        console.log(`📊 股票 ${this.stockInfos[index].code} 可见性已切换为: ${this.stockVisibility[index]} (包含${this.stockIndicatorSeries[index]?.length || 0}个指标系列)`);
     }
     
     /**
@@ -1705,6 +1717,11 @@ class MainChart extends BaseChart {
             const stockInfo = this.stockInfos[stockIndex];
             if (!stockInfo) return;
             
+            // 初始化该股票的指标系列数组
+            if (!this.stockIndicatorSeries[stockIndex]) {
+                this.stockIndicatorSeries[stockIndex] = [];
+            }
+            
             // 处理SuperTrend数据，获取分段数据和信号点
             const processedData = this.processSupertrendDataAdvanced(data);
             
@@ -1717,9 +1734,11 @@ class MainChart extends BaseChart {
                         lineWidth: 3,
                         lastValueVisible: false,
                         priceLineVisible: false,
-                        visible: true
+                        visible: this.stockVisibility[stockIndex] !== false
                     });
                     uptrendSeries.setData(segment);
+                    // 记录到该股票的指标系列中
+                    this.stockIndicatorSeries[stockIndex].push(uptrendSeries);
                 }
             });
             
@@ -1732,9 +1751,11 @@ class MainChart extends BaseChart {
                         lineWidth: 3,
                         lastValueVisible: false,
                         priceLineVisible: false,
-                        visible: true
+                        visible: this.stockVisibility[stockIndex] !== false
                     });
                     downtrendSeries.setData(segment);
+                    // 记录到该股票的指标系列中
+                    this.stockIndicatorSeries[stockIndex].push(downtrendSeries);
                 }
             });
             
@@ -1906,6 +1927,11 @@ class MainChart extends BaseChart {
             const stockInfo = this.stockInfos[stockIndex];
             if (!stockInfo) return;
             
+            // 初始化该股票的指标系列数组
+            if (!this.stockIndicatorSeries[stockIndex]) {
+                this.stockIndicatorSeries[stockIndex] = [];
+            }
+            
             const maData = data
                 .filter(item => item && item.time && item.ma !== null && isFinite(item.ma))
                 .map(item => ({ time: item.time, value: item.ma }));
@@ -1920,10 +1946,14 @@ class MainChart extends BaseChart {
                 color: indicator === 'ma5' ? '#ff6b6b' : '#4ecdc4',
                 lineWidth: 1,
                 lastValueVisible: false,
-                priceLineVisible: false
+                priceLineVisible: false,
+                visible: this.stockVisibility[stockIndex] !== false
             });
             
             maSeries.setData(maData);
+            
+            // 记录到该股票的指标系列中
+            this.stockIndicatorSeries[stockIndex].push(maSeries);
             
             console.log(`✅ ${indicator} 指标已添加 (股票${stockIndex}), 数据点: ${maData.length}`);
             
@@ -2329,6 +2359,7 @@ class MainChart extends BaseChart {
             // 清空所有系列
             this.candleSeries = [];
             this.indicatorSeries = [];
+            this.stockIndicatorSeries = [];
             
             // 清空股票信息
             this.stockInfos = [];
