@@ -1000,86 +1000,19 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 创建股票图例
+     * 创建股票图例（已废弃，功能已合并到价格信息栏）
      */
     createStockLegend() {
-        // 检查是否已存在图例
-        let legend = document.getElementById('stock-legend');
-        if (legend) {
-            return legend;
-        }
-        
-        // 创建图例容器
-        legend = document.createElement('div');
-        legend.id = 'stock-legend';
-        legend.style.cssText = `
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(255, 255, 255, 0.95);
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
-            padding: 8px 12px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 12px;
-            line-height: 1.4;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            z-index: 1000;
-            max-width: 200px;
-            min-width: 120px;
-        `;
-        
-        // 添加到图表容器
-        this.container.style.position = 'relative';
-        this.container.appendChild(legend);
-        this.legendContainer = legend;
-        
-        return legend;
+        // 功能已合并到价格信息栏，此方法保留用于兼容性
+        return null;
     }
     
     /**
-     * 更新股票图例
+     * 更新股票图例（已废弃，功能已合并到价格信息栏）
      */
     updateStockLegend() {
-        const legend = this.createStockLegend();
-        
-        if (this.stockInfos.length === 0) {
-            legend.innerHTML = '<div style="color: #666;">暂无股票</div>';
-            return;
-        }
-        
-        let html = '<div style="font-weight: bold; margin-bottom: 6px; color: #333;">股票列表</div>';
-        
-        this.stockInfos.forEach((stockInfo, index) => {
-            if (!stockInfo) return;
-            
-            const isVisible = this.stockVisibility[index] !== false;
-            const opacity = isVisible ? '1' : '0.5';
-            const textDecoration = isVisible ? 'none' : 'line-through';
-            
-            html += `
-                <div style="display: flex; align-items: center; margin-bottom: 4px; cursor: pointer; opacity: ${opacity}; text-decoration: ${textDecoration};" 
-                     onclick="window.toggleStock(${index})" title="点击切换显示/隐藏">
-                    <div style="width: 12px; height: 12px; background: ${stockInfo.colorScheme.upColor}; margin-right: 6px; border-radius: 2px;"></div>
-                    <span style="color: #333; font-weight: ${stockInfo.isMain ? 'bold' : 'normal'};">
-                        ${stockInfo.code}${stockInfo.isMain ? ' (主)' : ''}
-                    </span>
-                </div>
-            `;
-        });
-        
-        // 添加归一化控制
-        html += `
-            <div style="border-top: 1px solid #e0e0e0; margin-top: 8px; padding-top: 6px;">
-                <label style="display: flex; align-items: center; cursor: pointer;">
-                    <input type="checkbox" ${this.normalizationEnabled ? 'checked' : ''} 
-                           onchange="window.toggleNormalization()" style="margin-right: 6px;">
-                    <span style="color: #666; font-size: 11px;">价格归一化</span>
-                </label>
-            </div>
-        `;
-        
-        legend.innerHTML = html;
+        // 功能已合并到价格信息栏，无需独立更新
+        // 图例信息会在信息栏更新时一并更新
     }
     
     /**
@@ -1109,8 +1042,8 @@ class MainChart extends BaseChart {
             });
         }
         
-        // 更新图例
-        this.updateStockLegend();
+        // 更新信息栏（股票列表会自动刷新）
+        this.updateInfoBarWithLatestData();
         
         console.log(`📊 股票 ${this.stockInfos[index].code} 可见性已切换为: ${this.stockVisibility[index]} (包含${this.stockIndicatorSeries[index]?.length || 0}个指标系列)`);
     }
@@ -1127,7 +1060,7 @@ class MainChart extends BaseChart {
             this.disableNormalization();
         }
         
-        this.updateStockLegend();
+        this.updateInfoBarWithLatestData();
         console.log(`📊 价格归一化已${this.normalizationEnabled ? '启用' : '禁用'}`);
     }
     
@@ -1184,7 +1117,7 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 创建价格信息栏
+     * 创建合并的价格信息栏（包含股票列表）
      */
     createInfoBar() {
         // 检查是否已存在信息栏
@@ -1203,14 +1136,13 @@ class MainChart extends BaseChart {
             background: rgba(255, 255, 255, 0.95);
             border: 1px solid #e0e0e0;
             border-radius: 4px;
-            padding: 6px 10px;
+            padding: 8px 12px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             font-size: 12px;
-            line-height: 1.2;
+            line-height: 1.3;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             z-index: 1000;
-            max-width: 90%;
-            white-space: nowrap;
+            max-width: 95%;
             overflow: hidden;
         `;
         
@@ -1322,16 +1254,17 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 渲染信息栏内容
+     * 渲染信息栏内容（股票列表和价格信息在同一行）
      */
     renderInfoBar(infoBar, ohlcData, indicators, timeStr) {
         if (!ohlcData) {
-            infoBar.innerHTML = `
-                <div style="color: #666;">
-                    <div><strong>${timeStr || '当前'}</strong></div>
-                    <div>暂无数据</div>
+            let html = this.renderStockListWithControls();
+            html += `
+                <div style="color: #666; margin-top: 6px; font-size: 11px;">
+                    <span style="font-weight: bold;">${timeStr || '当前'}</span> - 暂无数据
                 </div>
             `;
+            infoBar.innerHTML = html;
             return;
         }
         
@@ -1341,101 +1274,23 @@ class MainChart extends BaseChart {
         const changeColor = change >= 0 ? '#26a69a' : '#ef5350';
         const changeSign = change >= 0 ? '+' : '';
         
-        // 构建HTML内容 - 单行显示
-        let html = `
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <strong style="color: #333;">${this.stockInfos[0]?.code || 'Stock'}</strong>
-                <span style="color: #666;">${timeStr}</span>
-                <span>开: <strong>${ohlcData.open.toFixed(2)}</strong></span>
-                <span>高: <strong style="color: #26a69a;">${ohlcData.high.toFixed(2)}</strong></span>
-                <span>低: <strong style="color: #ef5350;">${ohlcData.low.toFixed(2)}</strong></span>
-                <span>收: <strong>${ohlcData.close.toFixed(2)}</strong></span>
-                <span style="color: ${changeColor};">
-                    <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
-                </span>
+        // 渲染股票列表和价格信息在同一行
+        let html = this.renderStockListWithPrices(ohlcData, timeStr);
+        
+        // 添加价格归一化控制
+        html += `
+            <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #eee;">
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 10px;">
+                    <input type="checkbox" ${this.normalizationEnabled ? 'checked' : ''} 
+                           onchange="window.toggleNormalization()" style="margin-right: 4px; transform: scale(0.8);">
+                    <span style="color: #666;">价格归一化</span>
+                </label>
+            </div>
         `;
-        
-        // 添加换手率信息
-        if (ohlcData.turnover_rate) {
-            html += `<span style="color: #666;">换手率: ${(ohlcData.turnover_rate * 100).toFixed(2)}%</span>`;
-        }
-        
-        html += `</div>`;
-        
-        // 添加指标信息到同一行
-        if (Object.keys(indicators).length > 0) {
-            for (const [name, value] of Object.entries(indicators)) {
-                if (value !== null && value !== undefined) {
-                    const color = name.includes('Up') ? '#26a69a' : name.includes('Down') ? '#ef5350' : '#666';
-                    const shortName = name.replace('HK.02432 ', ''); // 简化指标名称
-                    html += `<span style="color: ${color}; margin-left: 8px;">${shortName}: ${value.toFixed(2)}</span>`;
-                }
-            }
-        }
-        
-        infoBar.innerHTML = html;
-    }
-    
-    /**
-     * 渲染多股票信息栏内容
-     */
-    renderMultiStockInfoBar(infoBar, allStockData, indicators, timeStr) {
-        if (!allStockData || allStockData.length === 0) {
-            infoBar.innerHTML = `
-                <div style="color: #666;">
-                    <div><strong>${timeStr || '当前'}</strong></div>
-                    <div>暂无数据</div>
-                </div>
-            `;
-            return;
-        }
-        
-        // 构建多股票显示的HTML
-        let html = `
-            <div style="background: rgba(255, 255, 255, 0.95); border: 1px solid #e0e0e0; border-radius: 4px; padding: 8px; font-size: 11px; line-height: 1.3;">
-                <div style="font-weight: bold; margin-bottom: 6px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 4px;">
-                    📊 多股票对比 - ${timeStr}
-                </div>
-        `;
-        
-        // 为每只股票添加一行信息
-        allStockData.forEach((stockData, idx) => {
-            const stockInfo = stockData.stockInfo;
-            const change = stockData.close - stockData.open;
-            const changePercent = ((change / stockData.open) * 100);
-            const changeColor = change >= 0 ? stockInfo.colorScheme.upColor : stockInfo.colorScheme.downColor;
-            const changeSign = change >= 0 ? '+' : '';
-            
-            html += `
-                <div style="display: flex; align-items: center; margin-bottom: 3px; padding: 2px 0;">
-                    <div style="width: 8px; height: 8px; background: ${stockInfo.colorScheme.upColor}; margin-right: 6px; border-radius: 50%; flex-shrink: 0;"></div>
-                    <div style="min-width: 60px; font-weight: bold; color: #333; margin-right: 8px;">${stockInfo.code}</div>
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 10px;">
-                        <span>开: <strong>${stockData.open.toFixed(2)}</strong></span>
-                        <span>高: <strong style="color: ${stockInfo.colorScheme.upColor};">${stockData.high.toFixed(2)}</strong></span>
-                        <span>低: <strong style="color: ${stockInfo.colorScheme.downColor};">${stockData.low.toFixed(2)}</strong></span>
-                        <span>收: <strong>${stockData.close.toFixed(2)}</strong></span>
-                        <span style="color: ${changeColor};">
-                            <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
-                        </span>
-            `;
-            
-            // 添加换手率信息
-            if (stockData.turnover_rate) {
-                html += `<span style="color: #666;">换手率: ${(stockData.turnover_rate * 100).toFixed(2)}%</span>`;
-            }
-            
-            html += `</div></div>`;
-        });
         
         // 添加指标信息
         if (Object.keys(indicators).length > 0) {
-            html += `
-                <div style="border-top: 1px solid #eee; margin-top: 6px; padding-top: 4px;">
-                    <div style="font-weight: bold; color: #666; margin-bottom: 3px;">技术指标</div>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px;">
-            `;
-            
+            html += `<div style="margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px;">`;
             for (const [name, value] of Object.entries(indicators)) {
                 if (value !== null && value !== undefined) {
                     const color = name.includes('Up') ? '#26a69a' : name.includes('Down') ? '#ef5350' : '#666';
@@ -1443,11 +1298,189 @@ class MainChart extends BaseChart {
                     html += `<span style="color: ${color};">${shortName}: ${value.toFixed(2)}</span>`;
                 }
             }
-            
-            html += `</div></div>`;
+            html += `</div>`;
         }
         
-        html += `</div>`;
+        infoBar.innerHTML = html;
+    }
+    
+    /**
+     * 渲染股票列表部分（仅控制部分，用于无数据时）
+     */
+    renderStockListWithControls() {
+        if (this.stockInfos.length === 0) {
+            return '<div style="color: #666; font-size: 11px;">暂无股票</div>';
+        }
+        
+        let html = '<div style="margin-bottom: 4px;">';
+        
+        // 渲染股票列表
+        this.stockInfos.forEach((stockInfo, index) => {
+            if (!stockInfo) return;
+            
+            const isVisible = this.stockVisibility[index] !== false;
+            const opacity = isVisible ? '1' : '0.5';
+            const textDecoration = isVisible ? 'none' : 'line-through';
+            
+            html += `
+                <div style="display: flex; align-items: center; margin-bottom: 3px; cursor: pointer; opacity: ${opacity}; text-decoration: ${textDecoration};" 
+                     onclick="window.toggleStock(${index})" title="点击切换显示/隐藏">
+                    <div style="width: 8px; height: 8px; background: ${stockInfo.colorScheme.upColor}; margin-right: 4px; border-radius: 2px; flex-shrink: 0;"></div>
+                    <span style="color: #333; font-weight: ${stockInfo.isMain ? 'bold' : 'normal'}; font-size: 10px;">
+                        ${stockInfo.code}${stockInfo.isMain ? ' (主)' : ''}
+                    </span>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        return html;
+    }
+    
+    /**
+     * 渲染股票列表和价格信息在同一行
+     */
+    renderStockListWithPrices(ohlcData, timeStr) {
+        if (this.stockInfos.length === 0) {
+            return '<div style="color: #666; font-size: 11px;">暂无股票</div>';
+        }
+        
+        let html = '<div>';
+        
+        // 如果只有一只股票，显示股票名称和价格信息在同一行
+        if (this.stockInfos.length === 1) {
+            const stockInfo = this.stockInfos[0];
+            const isVisible = this.stockVisibility[0] !== false;
+            const opacity = isVisible ? '1' : '0.5';
+            const textDecoration = isVisible ? 'none' : 'line-through';
+            
+            const change = ohlcData.close - ohlcData.open;
+            const changePercent = ((change / ohlcData.open) * 100);
+            const changeColor = change >= 0 ? '#26a69a' : '#ef5350';
+            const changeSign = change >= 0 ? '+' : '';
+            
+            html += `
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px;">
+                    <div style="display: flex; align-items: center; cursor: pointer; opacity: ${opacity}; text-decoration: ${textDecoration};" 
+                         onclick="window.toggleStock(0)" title="点击切换显示/隐藏">
+                        <div style="width: 8px; height: 8px; background: ${stockInfo.colorScheme.upColor}; margin-right: 4px; border-radius: 2px; flex-shrink: 0;"></div>
+                        <span style="color: #333; font-weight: bold; font-size: 11px; margin-right: 8px;">
+                            ${stockInfo.code}
+                        </span>
+                    </div>
+                    <span style="color: #666; font-size: 10px; margin-right: 8px;">${timeStr}</span>
+                    <span style="font-size: 10px;">开: <strong>${ohlcData.open.toFixed(2)}</strong></span>
+                    <span style="font-size: 10px;">高: <strong style="color: #26a69a;">${ohlcData.high.toFixed(2)}</strong></span>
+                    <span style="font-size: 10px;">低: <strong style="color: #ef5350;">${ohlcData.low.toFixed(2)}</strong></span>
+                    <span style="font-size: 10px;">收: <strong>${ohlcData.close.toFixed(2)}</strong></span>
+                    <span style="color: ${changeColor}; font-size: 10px;">
+                        <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
+                    </span>
+            `;
+            
+            // 添加换手率信息
+            if (ohlcData.turnover_rate) {
+                html += `<span style="color: #666; font-size: 10px;">换手率: ${(ohlcData.turnover_rate * 100).toFixed(2)}%</span>`;
+            }
+            
+            html += `</div>`;
+        } else {
+            // 多只股票时，先显示股票列表
+            html += `<div style="margin-bottom: 6px; font-size: 10px; color: #666; font-weight: bold;">${timeStr}</div>`;
+            
+            this.stockInfos.forEach((stockInfo, index) => {
+                if (!stockInfo) return;
+                
+                const isVisible = this.stockVisibility[index] !== false;
+                const opacity = isVisible ? '1' : '0.5';
+                const textDecoration = isVisible ? 'none' : 'line-through';
+                
+                // 查找对应的价格数据
+                const stockOhlcData = stockInfo.data ? stockInfo.data.find(item => item.time === timeStr) : null;
+                
+                html += `
+                    <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 3px; opacity: ${opacity}; text-decoration: ${textDecoration};">
+                        <div style="display: flex; align-items: center; cursor: pointer; min-width: 80px;" 
+                             onclick="window.toggleStock(${index})" title="点击切换显示/隐藏">
+                            <div style="width: 6px; height: 6px; background: ${stockInfo.colorScheme.upColor}; margin-right: 3px; border-radius: 2px; flex-shrink: 0;"></div>
+                            <span style="color: #333; font-weight: ${stockInfo.isMain ? 'bold' : 'normal'}; font-size: 9px;">
+                                ${stockInfo.code}${stockInfo.isMain ? ' (主)' : ''}
+                            </span>
+                        </div>
+                `;
+                
+                if (stockOhlcData && isVisible) {
+                    const change = stockOhlcData.close - stockOhlcData.open;
+                    const changePercent = ((change / stockOhlcData.open) * 100);
+                    const changeColor = change >= 0 ? stockInfo.colorScheme.upColor : stockInfo.colorScheme.downColor;
+                    const changeSign = change >= 0 ? '+' : '';
+                    
+                    html += `
+                        <span style="font-size: 9px;">开: <strong>${stockOhlcData.open.toFixed(2)}</strong></span>
+                        <span style="font-size: 9px;">高: <strong style="color: ${stockInfo.colorScheme.upColor};">${stockOhlcData.high.toFixed(2)}</strong></span>
+                        <span style="font-size: 9px;">低: <strong style="color: ${stockInfo.colorScheme.downColor};">${stockOhlcData.low.toFixed(2)}</strong></span>
+                        <span style="font-size: 9px;">收: <strong>${stockOhlcData.close.toFixed(2)}</strong></span>
+                        <span style="color: ${changeColor}; font-size: 9px;">
+                            <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
+                        </span>
+                    `;
+                } else if (!isVisible) {
+                    html += `<span style="font-size: 9px; color: #999;">已隐藏</span>`;
+                } else {
+                    html += `<span style="font-size: 9px; color: #999;">无数据</span>`;
+                }
+                
+                html += `</div>`;
+            });
+        }
+        
+        html += '</div>';
+        return html;
+    }
+    
+    /**
+     * 渲染多股票信息栏内容（股票列表和价格信息在同一行）
+     */
+    renderMultiStockInfoBar(infoBar, allStockData, indicators, timeStr) {
+        if (!allStockData || allStockData.length === 0) {
+            let html = this.renderStockListWithControls();
+            html += `
+                <div style="color: #666; margin-top: 6px; font-size: 11px;">
+                    <span style="font-weight: bold;">${timeStr || '当前'}</span> - 暂无数据
+                </div>
+            `;
+            infoBar.innerHTML = html;
+            return;
+        }
+        
+        // 直接使用新的渲染方法
+        const firstStockData = allStockData[0];
+        let html = this.renderStockListWithPrices(firstStockData, timeStr);
+        
+        // 添加价格归一化控制
+        html += `
+            <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #eee;">
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 10px;">
+                    <input type="checkbox" ${this.normalizationEnabled ? 'checked' : ''} 
+                           onchange="window.toggleNormalization()" style="margin-right: 4px; transform: scale(0.8);">
+                    <span style="color: #666;">价格归一化</span>
+                </label>
+            </div>
+        `;
+        
+        // 添加指标信息
+        if (Object.keys(indicators).length > 0) {
+            html += `<div style="margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px;">`;
+            for (const [name, value] of Object.entries(indicators)) {
+                if (value !== null && value !== undefined) {
+                    const color = name.includes('Up') ? '#26a69a' : name.includes('Down') ? '#ef5350' : '#666';
+                    const shortName = name.replace(/HK\.\d+\s/, ''); // 简化指标名称
+                    html += `<span style="color: ${color};">${shortName}: ${value.toFixed(2)}</span>`;
+                }
+            }
+            html += `</div>`;
+        }
+        
         infoBar.innerHTML = html;
     }
     
@@ -2050,10 +2083,9 @@ class MainChart extends BaseChart {
             this.optimizePriceRange();
         }, 200);
         
-        // 初始化价格信息栏和股票图例
+        // 初始化价格信息栏（已包含股票列表）
         setTimeout(() => {
             this.updateInfoBarWithLatestData();
-            this.updateStockLegend();
         }, 100);
     }
     
@@ -2388,12 +2420,13 @@ class MainChart extends BaseChart {
             this.setupVolumeSeries();
         }
         
-        // 清理价格信息栏和股票图例
+        // 清理价格信息栏（包含股票列表）
         const infoBar = document.getElementById('price-info-bar');
         if (infoBar) {
             infoBar.remove();
         }
         
+        // 清理可能存在的独立股票图例
         const legend = document.getElementById('stock-legend');
         if (legend) {
             legend.remove();
