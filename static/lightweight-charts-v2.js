@@ -839,29 +839,18 @@ class MainChart extends BaseChart {
         
         // 首先配置所有价格轴
         this.setupPriceScales();
-        // 然后创建成交量系列
-        this.setupVolumeSeries();
-        // 最后设置事件监听器
+        // 设置事件监听器
         this.setupEventListeners();
         
         console.log('✅ MainChart 初始化完成');
     }
     
     /**
-     * 设置成交量系列
+     * 设置成交量系列（已移除，成交量将作为独立子图显示）
      */
     setupVolumeSeries() {
-        try {
-            this.volumeSeries = this.addSeries('histogram', {
-                priceScaleId: 'volume',
-                priceFormat: { type: 'volume' },
-                color: '#26a69a'
-            });
-            
-            console.log('📊 成交量系列创建完成，使用价格轴: volume');
-        } catch (error) {
-            console.error('❌ 成交量系列创建失败:', error);
-        }
+        // 成交量已从主图中移除，将作为独立的子图显示
+        console.log('📊 成交量系列已从主图中移除');
     }
     
     /**
@@ -869,26 +858,17 @@ class MainChart extends BaseChart {
      */
     setupPriceScales() {
         try {
-            // 主价格轴 - K线和价格指标 (顶部65%)
+            // 主价格轴 - K线和价格指标 (占据大部分空间)
             this.chart.priceScale('right').applyOptions({
-                scaleMargins: { top: 0.05, bottom: 0.35 },  // 主图占顶部65%
+                scaleMargins: { top: 0.05, bottom: 0.25 },  // 主图占顶部75%
                 alignLabels: true,
                 borderVisible: true,
                 autoScale: true
             });
             
-            // 成交量价格轴 - 中间区域 (中间15%)
-            this.chart.priceScale('volume').applyOptions({
-                scaleMargins: { top: 0.65, bottom: 0.2 },   // 成交量占中间15%
-                alignLabels: true,
-                borderVisible: true,
-                autoScale: true,
-                borderColor: '#D0D0D0'  // 添加边框颜色便于区分
-            });
-            
-            // Squeeze指标价格轴 - 底部区域 (底部20%)
+            // Squeeze指标价格轴 - 底部区域 (底部25%)
             this.chart.priceScale('squeeze').applyOptions({
-                scaleMargins: { top: 0.8, bottom: 0.0 },   // Squeeze占底部20%
+                scaleMargins: { top: 0.75, bottom: 0.0 },   // Squeeze占底部25%
                 alignLabels: true,
                 borderVisible: true,
                 borderColor: '#B0B0B0',  // 更深的边框颜色
@@ -897,7 +877,7 @@ class MainChart extends BaseChart {
             });
             
             console.log('✅ 所有价格轴已预先配置完成');
-            console.log('📊 价格轴布局: 主图(5-65%) + 成交量(65-80%) + Squeeze(80-100%)');
+            console.log('📊 价格轴布局: 主图(5-75%) + Squeeze(75-100%)');
         } catch (error) {
             console.error('❌ 价格轴配置失败:', error);
         }
@@ -1025,11 +1005,6 @@ class MainChart extends BaseChart {
             // 创建K线系列
             await this.createCandlestickSeries(ohlc, index);
             
-            // 创建成交量数据
-            if (index === 0) { // 只为主股票创建成交量
-                this.createVolumeData(ohlc);
-            }
-            
             // 加载指标
             await this.loadIndicatorsForStock(code, selectedIndicators, index);
             
@@ -1140,33 +1115,11 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 创建成交量数据
+     * 创建成交量数据（已移除，成交量将作为独立子图显示）
      */
     createVolumeData(ohlc) {
-        try {
-            if (!this.volumeSeries) {
-                console.error('❌ 成交量系列未初始化');
-                return;
-            }
-            
-            const volumeData = ohlc
-                .filter(bar => bar && bar.time && bar.volume && isFinite(bar.volume) && bar.volume > 0)
-                .map(bar => ({
-                    time: bar.time,
-                    value: bar.volume,
-                    color: bar.close >= bar.open ? '#26a69a80' : '#ef535080' // 添加透明度
-                }));
-            
-            if (volumeData.length > 0) {
-                this.volumeSeries.setData(volumeData);
-                console.log(`✅ 成交量数据设置完成，数据点: ${volumeData.length}`);
-            } else {
-                console.warn('⚠️ 没有有效的成交量数据');
-            }
-            
-        } catch (error) {
-            console.error('❌ 创建成交量数据失败:', error);
-        }
+        // 成交量已从主图中移除，将作为独立的子图显示
+        console.log('📊 成交量数据创建已跳过（已从主图移除）');
     }
     
     /**
