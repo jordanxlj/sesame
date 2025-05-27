@@ -1409,22 +1409,27 @@ class MainChart extends BaseChart {
                         </div>
                 `;
                 
-                if (stockOhlcData && isVisible) {
-                    const change = stockOhlcData.close - stockOhlcData.open;
-                    const changePercent = ((change / stockOhlcData.open) * 100);
-                    const changeColor = change >= 0 ? stockInfo.colorScheme.upColor : stockInfo.colorScheme.downColor;
-                    const changeSign = change >= 0 ? '+' : '';
-                    
-                    html += `
-                        <span style="font-size: 9px;">开: <strong>${stockOhlcData.open.toFixed(2)}</strong></span>
-                        <span style="font-size: 9px;">高: <strong style="color: ${stockInfo.colorScheme.upColor};">${stockOhlcData.high.toFixed(2)}</strong></span>
-                        <span style="font-size: 9px;">低: <strong style="color: ${stockInfo.colorScheme.downColor};">${stockOhlcData.low.toFixed(2)}</strong></span>
-                        <span style="font-size: 9px;">收: <strong>${stockOhlcData.close.toFixed(2)}</strong></span>
-                        <span style="color: ${changeColor}; font-size: 9px;">
-                            <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
-                        </span>
-                    `;
-                } else if (!isVisible) {
+                                 if (stockOhlcData && isVisible) {
+                     const change = stockOhlcData.close - stockOhlcData.open;
+                     const changePercent = ((change / stockOhlcData.open) * 100);
+                     const changeColor = change >= 0 ? stockInfo.colorScheme.upColor : stockInfo.colorScheme.downColor;
+                     const changeSign = change >= 0 ? '+' : '';
+                     
+                     html += `
+                         <span style="font-size: 9px;">开: <strong>${stockOhlcData.open.toFixed(2)}</strong></span>
+                         <span style="font-size: 9px;">高: <strong style="color: ${stockInfo.colorScheme.upColor};">${stockOhlcData.high.toFixed(2)}</strong></span>
+                         <span style="font-size: 9px;">低: <strong style="color: ${stockInfo.colorScheme.downColor};">${stockOhlcData.low.toFixed(2)}</strong></span>
+                         <span style="font-size: 9px;">收: <strong>${stockOhlcData.close.toFixed(2)}</strong></span>
+                         <span style="color: ${changeColor}; font-size: 9px;">
+                             <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
+                         </span>
+                     `;
+                     
+                     // 添加换手率信息
+                     if (stockOhlcData.turnover_rate) {
+                         html += `<span style="color: #666; font-size: 9px;">换手率: ${(stockOhlcData.turnover_rate * 100).toFixed(2)}%</span>`;
+                     }
+                 } else if (!isVisible) {
                     html += `<span style="font-size: 9px; color: #999;">已隐藏</span>`;
                 } else {
                     html += `<span style="font-size: 9px; color: #999;">无数据</span>`;
