@@ -204,17 +204,21 @@
             chartManager = new ChartManager();
             window.chartManager = chartManager;
             
-            // 创建主图
-            const mainChart = chartManager.createMainChart(document.getElementById('chart'));
-            
-            // 加载数据
             try {
-                await chartManager.loadData(codes, selectedIndicators);
+                // 始终使用多面板布局，实现K线和成交量完全分离
+                console.log('🎯 使用多面板布局（K线与成交量分离）');
+                const multiPanelManager = chartManager.createMultiPanelChart(document.getElementById('chart'));
+                await multiPanelManager.loadData(codes, selectedIndicators);
+                
+                // 兼容性支持
+                window.mainChart = multiPanelManager.mainChart.chart;
+                
                 hideLoadingIndicator();
                 console.log('图表加载完成');
             } catch (error) {
                 hideLoadingIndicator();
                 console.error('图表加载失败:', error);
+                alert('图表加载失败: ' + error.message);
             }
         }
         

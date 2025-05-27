@@ -28,7 +28,7 @@ const ChartConfig = {
     
     // 主图配置
     MAIN_CHART: {
-        height: 600,
+        height: 400,  // 主图高度
         timeScale: {
             visible: true,
             timeVisible: true,
@@ -47,6 +47,38 @@ const ChartConfig = {
             enableNormalization: false,  // 是否启用价格归一化
             baseStockIndex: 0,          // 基准股票索引
             showRelativeChange: true    // 显示相对变化
+        }
+    },
+    
+    // 成交量图配置
+    VOLUME_CHART: {
+        height: 120,  // 成交量图高度
+        timeScale: {
+            visible: false,  // 隐藏时间轴，与主图同步
+            timeVisible: false,
+            secondsVisible: false,
+            borderVisible: false,
+            rightOffset: 5,
+            barSpacing: 6,
+            fixLeftEdge: false,
+            fixRightEdge: false,
+            lockVisibleTimeRangeOnResize: true
+        }
+    },
+    
+    // 指标图配置
+    INDICATOR_CHART: {
+        height: 150,  // 指标图高度
+        timeScale: {
+            visible: true,   // 显示时间轴
+            timeVisible: true,
+            secondsVisible: false,
+            borderVisible: true,
+            rightOffset: 5,
+            barSpacing: 6,
+            fixLeftEdge: false,
+            fixRightEdge: false,
+            lockVisibleTimeRangeOnResize: true
         }
     },
     
@@ -708,11 +740,28 @@ class BaseChart {
             
             // 检查图表是否有数据系列，避免在数据加载前设置时间范围
             if (this.series.length === 0) {
-                console.warn('图表暂无数据系列，延迟设置时间范围');
-                setTimeout(() => {
-                    this.setTimeRange(timeRange);
-                }, 100);
+                // 减少日志噪音，只在首次延迟时输出
+                if (!this.timeRangeRetryCount) {
+                    this.timeRangeRetryCount = 0;
+                    console.warn('图表暂无数据系列，延迟设置时间范围');
+                }
+                this.timeRangeRetryCount++;
+                
+                // 限制重试次数，避免无限循环
+                if (this.timeRangeRetryCount < 5) {
+                    setTimeout(() => {
+                        this.setTimeRange(timeRange);
+                    }, 150);
+                } else {
+                    // 静默停止重试，减少日志噪音
+                    this.timeRangeRetryCount = 0;
+                }
                 return;
+            }
+            
+            // 重置重试计数器
+            if (this.timeRangeRetryCount > 0) {
+                this.timeRangeRetryCount = 0;
             }
             
             // 转换时间格式以确保兼容性
@@ -727,19 +776,36 @@ class BaseChart {
                 return;
             }
             
-            // 使用转换后的数值时间
-            this.chart.timeScale().setVisibleRange(convertedTimeRange);
-            console.log('时间范围设置成功:', { original: safeTimeRange, converted: convertedTimeRange });
-            } catch (error) {
+            // 最终验证：确保转换后的时间范围有效且不为null
+            if (convertedTimeRange.from !== null && convertedTimeRange.to !== null && 
+                convertedTimeRange.from < convertedTimeRange.to) {
+                this.chart.timeScale().setVisibleRange(convertedTimeRange);
+                console.log('时间范围设置成功:', { original: safeTimeRange, converted: convertedTimeRange });
+            } else {
+                console.warn('转换后的时间范围无效，跳过设置:', convertedTimeRange);
+            }
+        } catch (error) {
             console.error('设置时间范围失败:', error, '时间范围:', timeRange);
             
-            // 如果是"Value is null"错误，尝试延迟重试
+            // 如果是"Value is null"错误，尝试延迟重试，但限制重试次数
             if (error.message && error.message.includes('Value is null')) {
-                console.log('检测到null值错误，将延迟重试...');
-                setTimeout(() => {
-                    console.log('重试设置时间范围...');
-                    this.setTimeRange(timeRange);
-                }, 200);
+                if (!this.retryCount) this.retryCount = 0;
+                if (this.retryCount < 2) {
+                    this.retryCount++;
+                    // 只在第一次重试时输出日志
+                    if (this.retryCount === 1) {
+                        console.log(`检测到null值错误，将延迟重试... (第${this.retryCount}次)`);
+                    }
+                    setTimeout(() => {
+                        if (this.retryCount === 1) {
+                            console.log('重试设置时间范围...');
+                        }
+                        this.setTimeRange(timeRange);
+                    }, 300 * this.retryCount); // 递增延迟时间
+                } else {
+                    // 静默停止重试
+                    this.retryCount = 0; // 重置计数器
+                }
             }
         }
     }
@@ -1043,7 +1109,11 @@ class MainChart extends BaseChart {
     }
     
     onCreated() {
+        // 首先配置所有价格轴
+        this.setupPriceScales();
+        // 然后创建成交量系列
         this.setupVolumeSeries();
+        // 最后设置事件监听器
         this.setupEventListeners();
     }
     
@@ -1054,15 +1124,57 @@ class MainChart extends BaseChart {
         this.volumeSeries = this.addSeries('histogram', {
             priceScaleId: 'volume',
             priceFormat: { type: 'volume' },
-            scaleMargins: { top: 0.8, bottom: 0 },
             color: ChartConfig.COLORS.VOLUME
         });
         
-        this.chart.priceScale('volume').applyOptions({
-            scaleMargins: { top: 0.8, bottom: 0 },
+        console.log('📊 成交量系列创建完成，使用价格轴: volume');
+    }
+    
+    /**
+     * 预先配置所有价格轴
+     */
+    setupPriceScales() {
+        // 主价格轴 - K线和价格指标 (顶部65%)
+        this.chart.priceScale('right').applyOptions({
+            scaleMargins: { top: 0.05, bottom: 0.35 },  // 主图占顶部65%
             alignLabels: true,
-            borderVisible: true
+            borderVisible: true,
+            autoScale: true
         });
+        
+        // 成交量价格轴 - 中间区域 (中间15%)
+        this.chart.priceScale('volume').applyOptions({
+            scaleMargins: { top: 0.65, bottom: 0.2 },   // 成交量占中间15%
+            alignLabels: true,
+            borderVisible: true,
+            autoScale: true,
+            borderColor: '#D0D0D0'  // 添加边框颜色便于区分
+        });
+        
+        // Squeeze指标价格轴 - 底部区域 (底部20%)
+        this.chart.priceScale('squeeze').applyOptions({
+            scaleMargins: { top: 0.8, bottom: 0.0 },   // Squeeze占底部20%
+            alignLabels: true,
+            borderVisible: true,
+            borderColor: '#B0B0B0',  // 更深的边框颜色
+            autoScale: true,
+            mode: 0
+        });
+        
+        console.log('✅ 所有价格轴已预先配置完成');
+        console.log('📊 价格轴布局: 主图(5-65%) + 成交量(65-80%) + Squeeze(80-100%)');
+        
+        // 验证价格轴配置
+        setTimeout(() => {
+            try {
+                console.log('🔍 验证价格轴配置:');
+                console.log('  - 主价格轴 (right):', this.chart.priceScale('right'));
+                console.log('  - 成交量价格轴 (volume):', this.chart.priceScale('volume'));
+                console.log('  - Squeeze价格轴 (squeeze):', this.chart.priceScale('squeeze'));
+            } catch (e) {
+                console.warn('⚠️ 价格轴验证失败:', e);
+            }
+        }, 100);
     }
     
     /**
@@ -1090,7 +1202,7 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 加载数据
+     * 加载数据（完整版本，包含成交量和所有指标）
      */
     async loadData(codes, selectedIndicators) {
         this.clearData();
@@ -1109,6 +1221,97 @@ class MainChart extends BaseChart {
             this.finalizeDataLoad();
             console.log('主图数据加载完成，已确保无留白显示');
         }, 50);
+    }
+    
+    /**
+     * 加载主图数据（仅K线和价格指标，用于多面板模式）
+     */
+    async loadMainData(codes, selectedIndicators) {
+        this.clearData();
+        this.prepareForDataLoad();
+        
+        const promises = codes.map((code, idx) => 
+            this.loadStockDataForMain(code, idx, selectedIndicators)
+        );
+        
+        await Promise.all(promises);
+        
+        // 标记数据已加载
+        this.isDataLoaded = true;
+        
+        setTimeout(() => {
+            this.finalizeDataLoad();
+            // 等待图表完全渲染后再标记为已对齐
+            setTimeout(() => {
+                this.isAligned = true;
+                console.log('主图K线数据加载完成');
+            }, 50);
+        }, 50);
+    }
+    
+    /**
+     * 为主图加载股票数据（不包含成交量和Squeeze）
+     */
+    async loadStockDataForMain(code, index, selectedIndicators) {
+        try {
+            console.log(`🚀 主图加载股票数据: ${code} (索引${index})`);
+            
+            const response = await fetch(`/api/kline?code=${code}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const ohlc = await response.json();
+            
+            if (!ohlc || !Array.isArray(ohlc) || ohlc.length === 0) {
+                console.error(`❌ ${code}: API返回的数据无效`);
+                return;
+            }
+            
+            // 存储股票信息
+            const colorScheme = ChartConfig.COLORS.MULTI_STOCK[index] || 
+                               ChartConfig.COLORS.MULTI_STOCK[ChartConfig.COLORS.MULTI_STOCK.length - 1];
+            
+            this.originalStockData[index] = JSON.parse(JSON.stringify(ohlc));
+            this.stockInfos[index] = {
+                code: code,
+                name: this.extractStockName(code),
+                colorScheme: colorScheme,
+                data: ohlc,
+                isMain: index === 0
+            };
+            
+            // 创建K线系列
+            const candleSeries = this.createCandlestickSeries(ohlc, index);
+            if (!candleSeries) {
+                console.error(`股票${index}: K线系列创建失败`);
+                return;
+            }
+            
+            // 加载价格指标（SuperTrend, MA等）
+            await this.loadPriceIndicatorsForStock(code, selectedIndicators, index);
+            
+            // 更新图例
+            this.updateLegend();
+            
+        } catch (error) {
+            console.error(`主图加载股票 ${code} 数据失败:`, error);
+        }
+    }
+    
+    /**
+     * 为特定股票加载价格指标（不包含Squeeze）
+     */
+    async loadPriceIndicatorsForStock(code, selectedIndicators, stockIndex) {
+        const priceIndicators = selectedIndicators.filter(indicator => 
+            ['supertrend', 'ma5', 'ma10'].includes(indicator)
+        );
+        
+        const promises = priceIndicators.map(indicator => 
+            this.loadIndicatorForStock(code, indicator, stockIndex)
+        );
+        
+        await Promise.all(promises);
     }
     
     /**
@@ -1200,7 +1403,23 @@ class MainChart extends BaseChart {
      * 清除 Squeeze 图表
      */
     clearSqueezeChart() {
-        // 找到并移除 Squeeze 子图
+        // 清除主图中的Squeeze指标
+        if (this.squeezeIndicators) {
+            try {
+                if (this.squeezeIndicators.momentum) {
+                    this.chart.removeSeries(this.squeezeIndicators.momentum);
+                }
+                if (this.squeezeIndicators.zeroLine) {
+                    this.chart.removeSeries(this.squeezeIndicators.zeroLine);
+                }
+                this.squeezeIndicators = null;
+                console.log('主图中的Squeeze指标已清除');
+            } catch (error) {
+                console.warn('清除主图Squeeze指标时出错:', error);
+            }
+        }
+        
+        // 找到并移除 Squeeze 子图（兼容性保留）
         const squeezeIndex = this.subCharts.findIndex(chart => chart instanceof SqueezeChart);
         if (squeezeIndex !== -1) {
             const squeezeChart = this.subCharts[squeezeIndex];
@@ -1414,7 +1633,6 @@ class MainChart extends BaseChart {
             
             const candleSeries = this.addSeries('candlestick', {
                 priceScaleId: priceScaleId,
-                scaleMargins: { top: 0.2, bottom: 0.3 },
                 ...colors
             });
             
@@ -1428,8 +1646,8 @@ class MainChart extends BaseChart {
                 this.chart.priceScale(priceScaleId).applyOptions({
                     visible: true, // 确保价格轴可见
                     autoScale: true,
-                    alignLabels: true,
-                    scaleMargins: { top: 0.2, bottom: 0.3 }
+                    alignLabels: true
+                    // 不在这里设置scaleMargins，使用预先配置的值
                 });
                 console.log(`✅ 股票${index}: 价格轴配置完成 (${priceScaleId})`);
             } catch (priceScaleError) {
@@ -1770,9 +1988,9 @@ class MainChart extends BaseChart {
     async loadIndicatorsForStock(code, selectedIndicators, stockIndex) {
         const promises = selectedIndicators.map(indicator => {
             if (indicator === 'squeeze_momentum') {
-                // Squeeze图表只为主股票创建一次
+                // Squeeze指标只为主股票创建一次，并添加到主图中
                 if (stockIndex === 0) {
-                    return this.createSqueezeChart(code);
+                    return this.addSqueezeIndicatorToMainChart(code);
                 }
                 return Promise.resolve();
             }
@@ -1982,6 +2200,119 @@ class MainChart extends BaseChart {
             return `rgba(${r}, ${g}, ${b}, ${opacity})`;
         }
         return color;
+    }
+
+    /**
+     * 在主图中添加Squeeze Momentum指标
+     */
+    async addSqueezeIndicatorToMainChart(code) {
+        console.log('📊 在主图中添加Squeeze Momentum指标:', code);
+        
+        try {
+            // 获取Squeeze Momentum数据
+            const response = await fetch(`/api/indicator?code=${code}&type=squeeze_momentum`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log(`📊 Squeeze Momentum数据长度:`, data.length);
+            
+            if (data.length === 0) {
+                console.warn('⚠️ 没有Squeeze Momentum数据');
+                return;
+            }
+            
+            // 创建动量柱状图
+            console.log('🔧 创建Squeeze动量柱状图，使用价格轴: squeeze');
+            const momentumSeries = this.chart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: {
+                    type: 'price',
+                    precision: 4,
+                    minMove: 0.0001
+                },
+                priceScaleId: 'squeeze'
+            });
+            
+            console.log('📊 Squeeze动量系列创建完成:', !!momentumSeries);
+            
+            // 处理动量数据
+            const momentumData = data.map(item => ({
+                time: item.time,
+                value: item.momentum || 0,
+                color: this.getSqueezeColor(item.momentum || 0)
+            }));
+            
+            momentumSeries.setData(momentumData);
+            
+            // 添加零线
+            const zeroLineSeries = this.chart.addLineSeries({
+                color: '#888888',
+                lineWidth: 1,
+                lineStyle: 0, // Solid
+                priceScaleId: 'squeeze',
+                crosshairMarkerVisible: false
+            });
+            
+            const zeroLineData = data.map(item => ({
+                time: item.time,
+                value: 0
+            }));
+            
+            zeroLineSeries.setData(zeroLineData);
+            
+            // 添加Squeeze标记
+            this.addSqueezeMarkersToMainChart(data, momentumSeries);
+            
+            // 存储系列引用
+            this.squeezeIndicators = {
+                momentum: momentumSeries,
+                zeroLine: zeroLineSeries
+            };
+            
+            console.log('✅ Squeeze Momentum指标已添加到主图');
+            
+        } catch (error) {
+            console.error('❌ 添加Squeeze Momentum指标失败:', error);
+        }
+    }
+
+    /**
+     * 获取Squeeze动量颜色
+     */
+    getSqueezeColor(momentum) {
+        if (momentum > 0) {
+            return '#00C851'; // 绿色
+        } else if (momentum < 0) {
+            return '#FF4444'; // 红色
+        } else {
+            return '#9E9E9E'; // 灰色
+        }
+    }
+
+    /**
+     * 添加Squeeze标记到主图
+     */
+    addSqueezeMarkersToMainChart(data, series) {
+        const markers = [];
+        
+        data.forEach(item => {
+            if (item.squeeze_on) {
+                markers.push({
+                    time: item.time,
+                    position: 'aboveBar',
+                    color: '#2196F3',  // 蓝色
+                    shape: 'circle',
+                    text: '●',
+                    size: 0.5
+                });
+            }
+        });
+        
+        if (markers.length > 0) {
+            series.setMarkers(markers);
+        }
     }
     
     /**
@@ -4088,12 +4419,652 @@ class SqueezeChart extends SubChart {
 }
 
 // ================================
-// 图表管理器
+// 成交量图表类
+// ================================
+class VolumeChart extends BaseChart {
+    constructor(container) {
+        super(container, ChartConfig.VOLUME_CHART);
+        this.volumeSeries = null;
+        this.mainChart = null;
+    }
+    
+    setMainChart(mainChart) {
+        this.mainChart = mainChart;
+    }
+    
+    onCreated() {
+        this.setupEventListeners();
+    }
+    
+    setupEventListeners() {
+        // 与主图同步时间范围
+        this.subscribeTimeRangeChange((timeRange) => {
+            if (this.mainChart && timeRange && this.volumeSeries) {
+                try {
+                    // 确保主图有数据系列再进行同步
+                    if (this.mainChart.series && this.mainChart.series.length > 0) {
+                        this.mainChart.chart.timeScale().setVisibleRange(timeRange);
+                    }
+                } catch (e) {
+                    console.warn('成交量图同步主图失败:', e);
+                }
+            }
+        });
+    }
+    
+    async loadVolumeData(codes) {
+        try {
+            // 创建成交量系列
+            this.volumeSeries = this.addSeries('histogram', {
+                priceFormat: { type: 'volume' },
+                color: ChartConfig.COLORS.VOLUME
+            });
+            
+            // 收集所有股票的成交量数据
+            const allVolumeData = new Map();
+            
+            for (let i = 0; i < codes.length; i++) {
+                const code = codes[i];
+                const response = await fetch(`/api/kline?code=${code}`);
+                const ohlc = await response.json();
+                
+                const colorScheme = ChartConfig.COLORS.MULTI_STOCK[i] || ChartConfig.COLORS.MULTI_STOCK[0];
+                
+                ohlc.forEach(bar => {
+                    if (bar.volume && bar.volume > 0) {
+                        const time = bar.time;
+                        const volume = Number(bar.volume);
+                        const color = bar.close >= bar.open ? colorScheme.upColor : colorScheme.downColor;
+                        
+                        if (!allVolumeData.has(time)) {
+                            allVolumeData.set(time, { time, value: 0, color });
+                        }
+                        
+                        const existing = allVolumeData.get(time);
+                        existing.value += volume;
+                        
+                        // 使用主股票的颜色
+                        if (i === 0) {
+                            existing.color = color;
+                        }
+                    }
+                });
+            }
+            
+            // 转换为数组并排序
+            const volumeData = Array.from(allVolumeData.values())
+                .sort((a, b) => ChartUtils.convertTimeToNumber(a.time) - ChartUtils.convertTimeToNumber(b.time));
+            
+            this.volumeSeries.setData(volumeData);
+            
+            // 标记数据已加载
+            this.isDataLoaded = true;
+            
+            // 等待图表完全渲染后再标记为已对齐
+            setTimeout(() => {
+                this.isAligned = true;
+                console.log(`✅ 成交量图数据加载完成: ${volumeData.length}条记录`);
+            }, 100);
+            
+        } catch (error) {
+            console.error('❌ 成交量图数据加载失败:', error);
+        }
+    }
+    
+    getSourceName() {
+        return 'volume';
+    }
+}
+
+// ================================
+// 指标图表类
+// ================================
+class IndicatorChart extends BaseChart {
+    constructor(container) {
+        super(container, ChartConfig.INDICATOR_CHART);
+        this.momentumSeries = null;
+        this.zeroLineSeries = null;
+        this.mainChart = null;
+    }
+    
+    setMainChart(mainChart) {
+        this.mainChart = mainChart;
+    }
+    
+    onCreated() {
+        this.setupEventListeners();
+    }
+    
+    setupEventListeners() {
+        // 与主图同步时间范围
+        this.subscribeTimeRangeChange((timeRange) => {
+            if (this.mainChart && timeRange && this.momentumSeries) {
+                try {
+                    // 确保主图有数据系列再进行同步
+                    if (this.mainChart.series && this.mainChart.series.length > 0) {
+                        this.mainChart.chart.timeScale().setVisibleRange(timeRange);
+                    }
+                } catch (e) {
+                    console.warn('指标图同步主图失败:', e);
+                }
+            }
+        });
+    }
+    
+    async loadSqueezeData(code) {
+        try {
+            const response = await fetch(`/api/indicator?code=${code}&type=squeeze_momentum`);
+            const data = await response.json();
+            
+            console.log(`📊 指标图加载Squeeze数据: ${data.length}条`);
+            
+            // 创建动量柱状图
+            this.momentumSeries = this.addSeries('histogram', {
+                priceFormat: {
+                    type: 'price',
+                    precision: 4,
+                    minMove: 0.0001
+                }
+            });
+            
+            // 处理动量数据
+            const momentumData = data.map(item => ({
+                time: item.time,
+                value: item.momentum || 0,
+                color: this.getSqueezeColor(item.momentum || 0)
+            }));
+            
+            this.momentumSeries.setData(momentumData);
+            
+            // 添加零线
+            this.zeroLineSeries = this.addSeries('line', {
+                color: '#888888',
+                lineWidth: 1,
+                lineStyle: 0,
+                crosshairMarkerVisible: false
+            });
+            
+            const zeroLineData = data.map(item => ({
+                time: item.time,
+                value: 0
+            }));
+            
+            this.zeroLineSeries.setData(zeroLineData);
+            
+            // 添加Squeeze标记
+            this.addSqueezeMarkers(data);
+            
+            // 标记数据已加载
+            this.isDataLoaded = true;
+            
+            // 等待图表完全渲染后再标记为已对齐
+            setTimeout(() => {
+                this.isAligned = true;
+                console.log('✅ Squeeze Momentum指标加载完成');
+            }, 100);
+            
+        } catch (error) {
+            console.error('❌ 指标图数据加载失败:', error);
+        }
+    }
+    
+    getSqueezeColor(momentum) {
+        if (momentum > 0) {
+            return '#00C851'; // 绿色
+        } else if (momentum < 0) {
+            return '#FF4444'; // 红色
+        } else {
+            return '#9E9E9E'; // 灰色
+        }
+    }
+    
+    addSqueezeMarkers(data) {
+        const markers = [];
+        
+        data.forEach(item => {
+            if (item.squeeze_on) {
+                markers.push({
+                    time: item.time,
+                    position: 'aboveBar',
+                    color: '#2196F3',
+                    shape: 'circle',
+                    text: '●',
+                    size: 0.5
+                });
+            }
+        });
+        
+        if (markers.length > 0 && this.momentumSeries) {
+            this.momentumSeries.setMarkers(markers);
+        }
+    }
+    
+    getSourceName() {
+        return 'indicator';
+    }
+}
+
+// ================================
+// 多面板图表管理器
+// ================================
+class MultiPanelChartManager {
+    constructor() {
+        this.mainChart = null;
+        this.volumeChart = null;
+        this.indicatorChart = null;
+        this.containers = {};
+        this.syncEnabled = true;
+    }
+    
+    /**
+     * 创建多面板图表布局
+     */
+    createMultiPanelLayout(mainContainer) {
+        // 创建主容器
+        const wrapper = document.createElement('div');
+        wrapper.id = 'multi-panel-wrapper';
+        wrapper.style.cssText = `
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            background: #f5f5f5;
+            padding: 2px;
+            border-radius: 4px;
+            box-sizing: border-box;
+            margin: 0;
+            align-items: stretch;
+        `;
+        
+        // 创建主图容器
+        const mainChartContainer = document.createElement('div');
+        mainChartContainer.id = 'main-chart-panel';
+        mainChartContainer.style.cssText = `
+            width: 100%;
+            height: ${ChartConfig.MAIN_CHART.height}px;
+            background: white;
+            border-radius: 2px;
+            border: 1px solid #e0e0e0;
+            box-sizing: border-box;
+            padding: 0;
+            margin: 0;
+            position: relative;
+        `;
+        
+        // 创建成交量图容器
+        const volumeChartContainer = document.createElement('div');
+        volumeChartContainer.id = 'volume-chart-panel';
+        volumeChartContainer.style.cssText = `
+            width: 100%;
+            height: ${ChartConfig.VOLUME_CHART.height}px;
+            background: white;
+            border-radius: 2px;
+            border: 1px solid #e0e0e0;
+            box-sizing: border-box;
+            padding: 0;
+            margin: 0;
+            position: relative;
+        `;
+        
+        // 创建指标图容器
+        const indicatorChartContainer = document.createElement('div');
+        indicatorChartContainer.id = 'indicator-chart-panel';
+        indicatorChartContainer.style.cssText = `
+            width: 100%;
+            height: ${ChartConfig.INDICATOR_CHART.height}px;
+            background: white;
+            border-radius: 2px;
+            border: 1px solid #e0e0e0;
+            box-sizing: border-box;
+            padding: 0;
+            margin: 0;
+            position: relative;
+        `;
+        
+        // 组装布局
+        wrapper.appendChild(mainChartContainer);
+        wrapper.appendChild(volumeChartContainer);
+        wrapper.appendChild(indicatorChartContainer);
+        
+        // 替换原容器内容
+        mainContainer.innerHTML = '';
+        mainContainer.appendChild(wrapper);
+        
+        // 保存容器引用
+        this.containers = {
+            main: mainChartContainer,
+            volume: volumeChartContainer,
+            indicator: indicatorChartContainer
+        };
+        
+        console.log('✅ 多面板布局创建完成');
+        return this.containers;
+    }
+    
+    /**
+     * 创建所有图表实例
+     */
+    createCharts() {
+        // 创建主图
+        this.mainChart = new MainChart(this.containers.main);
+        this.mainChart.create();
+        
+        // 创建成交量图
+        this.volumeChart = new VolumeChart(this.containers.volume);
+        this.volumeChart.create();
+        
+        // 创建指标图
+        this.indicatorChart = new IndicatorChart(this.containers.indicator);
+        this.indicatorChart.create();
+        
+        // 设置图表间的关联
+        this.volumeChart.setMainChart(this.mainChart);
+        this.indicatorChart.setMainChart(this.mainChart);
+        
+        // 统一所有图表的价格轴对齐配置
+        this.alignAllPriceScales();
+        
+        // 设置同步
+        this.setupChartSync();
+        
+        console.log('✅ 所有图表实例创建完成');
+    }
+
+    /**
+     * 统一所有图表的价格轴对齐配置
+     */
+    alignAllPriceScales() {
+        const alignmentConfig = {
+            rightPriceScale: {
+                visible: true,
+                borderVisible: true,
+                scaleMargins: {
+                    top: 0.1,
+                    bottom: 0.1
+                },
+                mode: LightweightCharts.PriceScaleMode.Normal,
+                autoScale: true,
+                invertScale: false,
+                alignLabels: true,
+                borderColor: '#e0e0e0',
+                textColor: '#333333',
+                entireTextOnly: false,
+                ticksVisible: true,
+                minimumWidth: 80  // 确保价格轴有固定最小宽度
+            },
+            leftPriceScale: {
+                visible: false
+            },
+            timeScale: {
+                rightOffset: 12,      // 统一的右侧偏移量
+                barSpacing: 6,        // 统一的柱间距
+                fixLeftEdge: false,
+                fixRightEdge: false,
+                lockVisibleTimeRangeOnResize: true,
+                shiftVisibleRangeOnNewBar: false,
+                borderVisible: true,
+                borderColor: '#e0e0e0',
+                rightBarStaysOnScroll: true
+            }
+        };
+
+        // 应用到所有图表
+        try {
+            if (this.mainChart && this.mainChart.chart) {
+                this.mainChart.chart.applyOptions(alignmentConfig);
+                // 标记为已配置对齐
+                this.mainChart.isAligned = true;
+            }
+            if (this.volumeChart && this.volumeChart.chart) {
+                this.volumeChart.chart.applyOptions({
+                    ...alignmentConfig,
+                    timeScale: {
+                        ...alignmentConfig.timeScale,
+                        visible: false,  // 成交量图隐藏时间轴
+                        timeVisible: false,
+                        borderVisible: false
+                    }
+                });
+                // 标记为已配置对齐
+                this.volumeChart.isAligned = true;
+            }
+            if (this.indicatorChart && this.indicatorChart.chart) {
+                this.indicatorChart.chart.applyOptions(alignmentConfig);
+                // 标记为已配置对齐
+                this.indicatorChart.isAligned = true;
+            }
+            
+            console.log('✅ 所有图表价格轴对齐配置已统一');
+        } catch (error) {
+            console.error('❌ 价格轴对齐配置失败:', error);
+        }
+    }
+    
+    /**
+     * 设置图表同步
+     */
+    setupChartSync() {
+        if (!this.syncEnabled) return;
+        
+        const charts = [this.mainChart, this.volumeChart, this.indicatorChart];
+        
+        charts.forEach((chart, index) => {
+            if (chart && chart.chart) {
+                chart.chart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+                    if (this.syncEnabled && timeRange) {
+                        // 同步其他图表，但要更安全地处理
+                        charts.forEach((otherChart, otherIndex) => {
+                            if (otherIndex !== index && otherChart && otherChart.chart) {
+                                // 检查图表是否完全准备好进行同步
+                                const isChartReady = otherChart.series && 
+                                                   otherChart.series.length > 0 && 
+                                                   otherChart.isDataLoaded && 
+                                                   otherChart.isAligned;
+                                
+                                if (isChartReady) {
+                                    try {
+                                        otherChart.chart.timeScale().setVisibleRange(timeRange);
+                                    } catch (e) {
+                                        // 静默处理同步失败，避免日志噪音
+                                        if (!e.message.includes('Value is null')) {
+                                            console.warn(`图表${otherIndex}同步失败:`, e);
+                                        }
+                                    }
+                                } else if (otherChart.series && otherChart.series.length > 0) {
+                                    // 如果图表有数据但未完全准备好，延迟同步
+                                    setTimeout(() => {
+                                        const isDelayedReady = otherChart.series && 
+                                                             otherChart.series.length > 0 && 
+                                                             otherChart.isDataLoaded && 
+                                                             otherChart.isAligned;
+                                        
+                                        if (isDelayedReady) {
+                                            try {
+                                                otherChart.chart.timeScale().setVisibleRange(timeRange);
+                                            } catch (e) {
+                                                // 延迟同步失败，静默处理
+                                                if (!e.message.includes('Value is null')) {
+                                                    console.warn(`图表${otherIndex}延迟同步失败:`, e);
+                                                }
+                                            }
+                                        }
+                                    }, 200);
+                                }
+                                // 如果图表未准备好，静默跳过
+                            }
+                        });
+                    }
+                });
+            }
+        });
+        
+        console.log('✅ 图表同步设置完成');
+    }
+    
+    /**
+     * 加载数据到所有面板
+     */
+    async loadData(codes, selectedIndicators) {
+        try {
+            console.log('🔄 开始加载多面板数据...');
+            
+            // 首先加载主图数据（K线和SuperTrend）
+            await this.mainChart.loadMainData(codes, selectedIndicators.filter(ind => 
+                ['supertrend', 'ma5', 'ma10'].includes(ind)
+            ));
+            console.log('✅ 主图数据加载完成');
+            
+            // 等待主图数据稳定后再加载其他面板
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // 顺序加载其他面板数据，确保每个面板完全准备好再加载下一个
+            
+            // 加载成交量数据
+            await this.volumeChart.loadVolumeData(codes);
+            console.log('✅ 成交量数据加载完成');
+            
+            // 等待成交量图完全稳定（包括isAligned标记设置）
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // 加载指标数据（Squeeze Momentum）
+            if (selectedIndicators.includes('squeeze_momentum')) {
+                await this.indicatorChart.loadSqueezeData(codes[0]);
+                console.log('✅ 指标数据加载完成');
+                
+                // 等待指标图完全稳定
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+            
+            // 最后进行一次全面的图表同步
+            setTimeout(() => {
+                this.performInitialSync();
+            }, 300);
+            
+            console.log('✅ 所有面板数据加载完成');
+        } catch (error) {
+            console.error('❌ 多面板数据加载失败:', error);
+        }
+    }
+
+    /**
+     * 执行初始同步，确保所有图表时间轴对齐
+     */
+    performInitialSync() {
+        try {
+            // 检查主图是否完全准备好
+            const isMainReady = this.mainChart && 
+                              this.mainChart.chart && 
+                              this.mainChart.isDataLoaded && 
+                              this.mainChart.isAligned;
+            
+            if (isMainReady) {
+                const mainTimeRange = this.mainChart.chart.timeScale().getVisibleRange();
+                if (mainTimeRange) {
+                    let syncCount = 0;
+                    let totalCharts = 0;
+                    
+                    // 同步成交量图（检查是否完全准备好）
+                    const isVolumeReady = this.volumeChart && 
+                                        this.volumeChart.series.length > 0 && 
+                                        this.volumeChart.isDataLoaded && 
+                                        this.volumeChart.isAligned;
+                    
+                    if (isVolumeReady) {
+                        totalCharts++;
+                        try {
+                            this.volumeChart.chart.timeScale().setVisibleRange(mainTimeRange);
+                            syncCount++;
+                        } catch (e) {
+                            if (!e.message.includes('Value is null')) {
+                                console.warn('初始同步成交量图失败:', e);
+                            }
+                        }
+                    }
+                    
+                    // 同步指标图（检查是否完全准备好）
+                    const isIndicatorReady = this.indicatorChart && 
+                                           this.indicatorChart.series.length > 0 && 
+                                           this.indicatorChart.isDataLoaded && 
+                                           this.indicatorChart.isAligned;
+                    
+                    if (isIndicatorReady) {
+                        totalCharts++;
+                        try {
+                            this.indicatorChart.chart.timeScale().setVisibleRange(mainTimeRange);
+                            syncCount++;
+                        } catch (e) {
+                            if (!e.message.includes('Value is null')) {
+                                console.warn('初始同步指标图失败:', e);
+                            }
+                        }
+                    }
+                    
+                    console.log(`✅ 初始图表同步完成 (${syncCount}/${totalCharts})`);
+                }
+            } else {
+                // 如果主图还没准备好，延迟重试
+                setTimeout(() => {
+                    this.performInitialSync();
+                }, 200);
+            }
+        } catch (error) {
+            console.warn('初始同步失败:', error);
+        }
+    }
+    
+    /**
+     * 销毁所有图表
+     */
+    destroy() {
+        if (this.mainChart) {
+            this.mainChart.destroy();
+            this.mainChart = null;
+        }
+        if (this.volumeChart) {
+            this.volumeChart.destroy();
+            this.volumeChart = null;
+        }
+        if (this.indicatorChart) {
+            this.indicatorChart.destroy();
+            this.indicatorChart = null;
+        }
+        
+        // 清理容器
+        const wrapper = document.getElementById('multi-panel-wrapper');
+        if (wrapper) {
+            wrapper.remove();
+        }
+        
+        console.log('✅ 多面板图表已销毁');
+    }
+}
+
+// ================================
+// 图表管理器（保持兼容性）
 // ================================
 class ChartManager {
     constructor() {
         this.mainChart = null;
         this.subCharts = [];
+        this.multiPanelManager = null;
+    }
+    
+    /**
+     * 创建多面板图表（新方法）
+     */
+    createMultiPanelChart(container) {
+        if (this.multiPanelManager) {
+            this.multiPanelManager.destroy();
+        }
+        
+        this.multiPanelManager = new MultiPanelChartManager();
+        this.multiPanelManager.createMultiPanelLayout(container);
+        this.multiPanelManager.createCharts();
+        
+        // 保持兼容性
+        this.mainChart = this.multiPanelManager.mainChart;
+        
+        return this.multiPanelManager;
     }
     
     /**
@@ -4241,6 +5212,9 @@ window.BaseChart = BaseChart;
 window.MainChart = MainChart;
 window.SubChart = SubChart;
 window.SqueezeChart = SqueezeChart;
+window.VolumeChart = VolumeChart;
+window.IndicatorChart = IndicatorChart;
+window.MultiPanelChartManager = MultiPanelChartManager;
 window.ChartManager = ChartManager;
 
 // 导出同步管理器实例
