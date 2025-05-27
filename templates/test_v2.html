@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LightWeight Charts V2.1.0 - 核心系统测试</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .header h1 {
+            color: #333;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        
+        .header p {
+            color: #666;
+            margin: 10px 0 0 0;
+            font-size: 1.1em;
+        }
+        
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+        
+        .test-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 1.3em;
+        }
+        
+        .test-result {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .test-result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        
+        .test-result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        
+        .test-result.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 15px 0;
+            background: white;
+        }
+        
+        .controls {
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .controls button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .controls button:hover {
+            background: #0056b3;
+        }
+        
+        .controls button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .status-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        
+        .status-label {
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .status-value {
+            color: #6c757d;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .log-panel {
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+        
+        .log-entry.success { color: #68d391; }
+        .log-entry.error { color: #fc8181; }
+        .log-entry.warn { color: #f6e05e; }
+        .log-entry.info { color: #63b3ed; }
+        
+        .test-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .test-btn:hover {
+            background: #0056b3;
+        }
+        
+        .test-status {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 LightWeight Charts V2.1.0</h1>
+            <p>核心BaseChart和配置系统测试</p>
+        </div>
+        
+        <!-- 系统检查 -->
+        <div class="test-section">
+            <h3>🔍 系统组件检查</h3>
+            <div id="system-check"></div>
+        </div>
+        
+        <!-- 配置系统测试 -->
+        <div class="test-section">
+            <h3>⚙️ 配置系统测试</h3>
+            <div id="config-test"></div>
+        </div>
+        
+        <!-- BaseChart测试 -->
+        <div class="test-section">
+            <h3>📊 BaseChart功能测试</h3>
+            <div class="chart-container" id="test-chart"></div>
+            <div class="controls">
+                <button onclick="createTestChart()">创建图表</button>
+                <button onclick="addTestSeries()">添加系列</button>
+                <button onclick="setTestData()">设置数据</button>
+                <button onclick="testTimeRange()">测试时间范围</button>
+                <button onclick="destroyTestChart()">销毁图表</button>
+            </div>
+            <div class="status-panel" id="chart-status"></div>
+        </div>
+        
+        <!-- 事件系统测试 -->
+        <div class="test-section">
+            <h3>📡 事件系统测试</h3>
+            <div class="controls">
+                <button onclick="testEventSystem()">测试事件系统</button>
+                <button onclick="clearEventLog()">清空日志</button>
+            </div>
+            <div class="log-panel" id="event-log"></div>
+        </div>
+        
+        <!-- 注册器测试 -->
+        <div class="test-section">
+            <h3>📋 图表注册器测试</h3>
+            <div class="controls">
+                <button onclick="testRegistry()">测试注册器</button>
+                <button onclick="showRegistryStatus()">显示注册状态</button>
+            </div>
+            <div class="status-panel" id="registry-status"></div>
+        </div>
+        
+        <!-- MainChart功能测试 -->
+        <div class="test-section">
+            <h3>📈 MainChart功能测试</h3>
+            <div class="test-content">
+                <div class="test-chart-container" id="mainChartContainer" style="width: 100%; height: 400px; border: 1px solid #ddd; margin: 10px 0;"></div>
+                <div class="test-controls">
+                    <button onclick="createMainChart()" class="test-btn">创建主图</button>
+                    <button onclick="loadMainChartData()" class="test-btn">加载数据</button>
+                    <button onclick="clearMainChart()" class="test-btn">清空数据</button>
+                    <button onclick="destroyMainChart()" class="test-btn">销毁主图</button>
+                </div>
+                <div class="test-status" id="mainChartStatus">状态: 未创建</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入LightweightCharts库 -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- 引入重构版本 -->
+    <script src="/static/lightweight-charts-v2.js"></script>
+    
+    <script>
+        // 全局变量
+        let testChart = null;
+        let testSeries = null;
+        let eventLog = [];
+        let testMainChart = null;
+        
+        // 页面加载完成后执行系统检查
+        document.addEventListener('DOMContentLoaded', function() {
+            // 等待LightweightCharts加载完成
+            setTimeout(() => {
+                performSystemCheck();
+                testConfigSystem();
+                setupEventLogging();
+                checkLightweightChartsAPI();
+            }, 100);
+        });
+        
+        // 系统组件检查
+        function performSystemCheck() {
+            const checkDiv = document.getElementById('system-check');
+            const checks = [
+                { name: 'LightweightCharts', obj: window.LightweightCharts, desc: '图表库' },
+                { name: 'ChartConfigV2', obj: window.ChartConfigV2, desc: '配置管理' },
+                { name: 'ChartUtilsV2', obj: window.ChartUtilsV2, desc: '工具函数' },
+                { name: 'EventEmitter', obj: window.EventEmitter, desc: '事件系统' },
+                { name: 'ChartRegistry', obj: window.ChartRegistry, desc: '图表注册器' },
+                { name: 'BaseChart', obj: window.BaseChart, desc: '基础图表类' },
+                { name: 'MainChart', obj: window.MainChart, desc: '主图表类' }
+            ];
+            
+            let html = '';
+            checks.forEach(check => {
+                const exists = !!check.obj;
+                const status = exists ? 'success' : 'error';
+                const icon = exists ? '✅' : '❌';
+                html += `<div class="test-result ${status}">${icon} ${check.name} (${check.desc}): ${exists ? '已加载' : '未找到'}</div>`;
+            });
+            
+            checkDiv.innerHTML = html;
+        }
+        
+        // 配置系统测试
+        function testConfigSystem() {
+            const testDiv = document.getElementById('config-test');
+            let html = '';
+            
+            try {
+                // 测试配置验证
+                const isValid = ChartConfigV2.validate();
+                html += `<div class="test-result ${isValid ? 'success' : 'error'}">配置验证: ${isValid ? '通过' : '失败'}</div>`;
+                
+                // 测试获取不同类型的配置
+                const mainConfig = ChartConfigV2.getChartConfig('main');
+                const volumeConfig = ChartConfigV2.getChartConfig('volume');
+                const indicatorConfig = ChartConfigV2.getChartConfig('indicator');
+                
+                html += `<div class="test-result success">主图配置: 高度=${mainConfig.height}px</div>`;
+                html += `<div class="test-result success">成交量配置: 高度=${volumeConfig.height}px</div>`;
+                html += `<div class="test-result success">指标配置: 高度=${indicatorConfig.height}px</div>`;
+                
+                // 测试颜色配置
+                const colors = ChartConfigV2.COLORS;
+                html += `<div class="test-result info">颜色配置: 上涨=${colors.UP}, 下跌=${colors.DOWN}</div>`;
+                
+                // 测试同步配置
+                const sync = ChartConfigV2.SYNC;
+                html += `<div class="test-result info">同步配置: 节流延迟=${sync.THROTTLE_DELAY}ms</div>`;
+                
+            } catch (error) {
+                html += `<div class="test-result error">配置测试失败: ${error.message}</div>`;
+            }
+            
+            testDiv.innerHTML = html;
+        }
+        
+        // 创建测试图表
+        function createTestChart() {
+            try {
+                // 检查LightweightCharts是否可用
+                if (!window.LightweightCharts) {
+                    addLog('error', 'LightweightCharts库未加载');
+                    return;
+                }
+                
+                const container = document.getElementById('test-chart');
+                
+                // 清空容器
+                container.innerHTML = '';
+                
+                // 创建BaseChart实例
+                testChart = new BaseChart(container, {
+                    chartType: 'main',
+                    width: container.clientWidth,
+                    height: 400
+                });
+                
+                // 监听事件
+                testChart.on('created', () => {
+                    addLog('success', '图表创建成功');
+                    updateChartStatus();
+                });
+                
+                testChart.on('error', (error) => {
+                    addLog('error', `图表错误: ${error.message}`);
+                    updateChartStatus();
+                });
+                
+                testChart.on('dataLoaded', (data) => {
+                    addLog('info', `数据已加载: ${data.length} 条记录`);
+                    updateChartStatus();
+                });
+                
+                // 创建图表
+                testChart.create();
+                
+            } catch (error) {
+                addLog('error', `创建图表失败: ${error.message}`);
+            }
+        }
+        
+        // 添加测试系列
+        function addTestSeries() {
+            if (!testChart) {
+                addLog('warn', '请先创建图表');
+                return;
+            }
+            
+            try {
+                testSeries = testChart.addSeries('candlestick', {
+                    upColor: ChartConfigV2.COLORS.UP,
+                    downColor: ChartConfigV2.COLORS.DOWN,
+                    borderUpColor: ChartConfigV2.COLORS.UP,
+                    borderDownColor: ChartConfigV2.COLORS.DOWN,
+                    wickUpColor: ChartConfigV2.COLORS.UP,
+                    wickDownColor: ChartConfigV2.COLORS.DOWN
+                });
+                
+                if (testSeries) {
+                    addLog('success', '蜡烛图系列添加成功');
+                    updateChartStatus();
+                } else {
+                    addLog('error', '添加系列失败');
+                }
+            } catch (error) {
+                addLog('error', `添加系列失败: ${error.message}`);
+            }
+        }
+        
+        // 设置测试数据
+        function setTestData() {
+            if (!testSeries) {
+                addLog('warn', '请先添加系列');
+                return;
+            }
+            
+            try {
+                // 生成测试数据
+                const testData = generateTestData();
+                testSeries.setData(testData);
+                
+                addLog('success', `测试数据设置成功: ${testData.length} 条记录`);
+                updateChartStatus();
+                
+                // 适配内容
+                setTimeout(() => {
+                    testChart.fitContentToData();
+                }, 100);
+                
+            } catch (error) {
+                addLog('error', `设置数据失败: ${error.message}`);
+            }
+        }
+        
+        // 测试时间范围
+        function testTimeRange() {
+            if (!testChart) {
+                addLog('warn', '请先创建图表并设置数据');
+                return;
+            }
+            
+            try {
+                // 获取当前时间范围
+                const currentRange = testChart.getTimeRange();
+                if (currentRange) {
+                    addLog('info', `当前时间范围: ${new Date(currentRange.from * 1000).toLocaleString()} - ${new Date(currentRange.to * 1000).toLocaleString()}`);
+                    
+                    // 设置新的时间范围（缩放到中间部分）
+                    const duration = currentRange.to - currentRange.from;
+                    const newRange = {
+                        from: currentRange.from + duration * 0.25,
+                        to: currentRange.to - duration * 0.25
+                    };
+                    
+                    testChart.setTimeRange(newRange);
+                    addLog('success', '时间范围设置成功');
+                } else {
+                    addLog('warn', '无法获取时间范围');
+                }
+            } catch (error) {
+                addLog('error', `时间范围测试失败: ${error.message}`);
+            }
+        }
+        
+        // 销毁测试图表
+        function destroyTestChart() {
+            if (testChart) {
+                testChart.destroy();
+                testChart = null;
+                testSeries = null;
+                addLog('success', '图表已销毁');
+                updateChartStatus();
+            } else {
+                addLog('warn', '没有图表需要销毁');
+            }
+        }
+        
+        // 测试事件系统
+        function testEventSystem() {
+            try {
+                const emitter = new EventEmitter();
+                
+                // 测试基本事件
+                emitter.on('test', (data) => {
+                    addLog('success', `事件接收: ${data}`);
+                });
+                
+                emitter.emit('test', 'Hello World!');
+                
+                // 测试一次性事件
+                emitter.once('once-test', (data) => {
+                    addLog('info', `一次性事件: ${data}`);
+                });
+                
+                emitter.emit('once-test', 'First');
+                emitter.emit('once-test', 'Second'); // 这个不会触发
+                
+                // 测试链式调用
+                emitter.on('chain1', () => addLog('success', '链式事件1'))
+                       .on('chain2', () => addLog('success', '链式事件2'));
+                
+                emitter.emit('chain1');
+                emitter.emit('chain2');
+                
+                addLog('success', '事件系统测试完成');
+                
+            } catch (error) {
+                addLog('error', `事件系统测试失败: ${error.message}`);
+            }
+        }
+        
+        // 测试注册器
+        function testRegistry() {
+            try {
+                // 创建测试图表
+                const testContainer = document.createElement('div');
+                const chart1 = new BaseChart(testContainer, { chartType: 'main' });
+                const chart2 = new BaseChart(testContainer, { chartType: 'volume' });
+                
+                // 注册主图表
+                ChartRegistry.register(chart1.id, chart1, true);
+                
+                addLog('success', `图表注册测试完成，总数: ${ChartRegistry.getChartCount()}`);
+                addLog('info', `主图表ID: ${ChartRegistry.getMainChart()?.id}`);
+                
+                // 清理
+                chart1.destroy();
+                chart2.destroy();
+                
+            } catch (error) {
+                addLog('error', `注册器测试失败: ${error.message}`);
+            }
+        }
+        
+        // 显示注册器状态
+        function showRegistryStatus() {
+            const statusDiv = document.getElementById('registry-status');
+            const charts = ChartRegistry.getAllCharts();
+            const mainChart = ChartRegistry.getMainChart();
+            
+            let html = `
+                <div class="status-item">
+                    <span class="status-label">图表总数:</span>
+                    <span class="status-value">${ChartRegistry.getChartCount()}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">主图表:</span>
+                    <span class="status-value">${mainChart ? mainChart.id : '无'}</span>
+                </div>
+            `;
+            
+            charts.forEach((chart, index) => {
+                const info = chart.getInfo();
+                html += `
+                    <div class="status-item">
+                        <span class="status-label">图表${index + 1}:</span>
+                        <span class="status-value">${info.id} (${info.type})</span>
+                    </div>
+                `;
+            });
+            
+            statusDiv.innerHTML = html;
+        }
+        
+        // 更新图表状态
+        function updateChartStatus() {
+            const statusDiv = document.getElementById('chart-status');
+            
+            if (!testChart) {
+                statusDiv.innerHTML = '<div class="status-item"><span class="status-label">状态:</span><span class="status-value">无图表</span></div>';
+                return;
+            }
+            
+            const info = testChart.getInfo();
+            const state = testChart.getState();
+            
+            let html = `
+                <div class="status-item">
+                    <span class="status-label">图表ID:</span>
+                    <span class="status-value">${info.id}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">类型:</span>
+                    <span class="status-value">${info.type}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">系列数量:</span>
+                    <span class="status-value">${info.seriesCount}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">数据已加载:</span>
+                    <span class="status-value">${state.isDataLoaded ? '是' : '否'}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">已对齐:</span>
+                    <span class="status-value">${state.isAligned ? '是' : '否'}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">有错误:</span>
+                    <span class="status-value">${state.hasError ? '是' : '否'}</span>
+                </div>
+            `;
+            
+            if (state.hasError && state.errorMessage) {
+                html += `
+                    <div class="status-item">
+                        <span class="status-label">错误信息:</span>
+                        <span class="status-value">${state.errorMessage}</span>
+                    </div>
+                `;
+            }
+            
+            statusDiv.innerHTML = html;
+        }
+        
+        // 设置事件日志
+        function setupEventLogging() {
+            // 重写console方法以捕获日志
+            const originalLog = console.log;
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            
+            console.log = function(...args) {
+                originalLog.apply(console, args);
+                if (args[0] && typeof args[0] === 'string' && args[0].includes('📊')) {
+                    addLog('info', args.join(' '));
+                }
+            };
+            
+            console.error = function(...args) {
+                originalError.apply(console, args);
+                if (args[0] && typeof args[0] === 'string' && args[0].includes('❌')) {
+                    addLog('error', args.join(' '));
+                }
+            };
+            
+            console.warn = function(...args) {
+                originalWarn.apply(console, args);
+                if (args[0] && typeof args[0] === 'string') {
+                    addLog('warn', args.join(' '));
+                }
+            };
+        }
+        
+        // 添加日志
+        function addLog(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            eventLog.push({ type, message, timestamp });
+            
+            // 限制日志数量
+            if (eventLog.length > 50) {
+                eventLog.shift();
+            }
+            
+            updateEventLog();
+        }
+        
+        // 更新事件日志显示
+        function updateEventLog() {
+            const logDiv = document.getElementById('event-log');
+            let html = '';
+            
+            eventLog.forEach(log => {
+                html += `<div class="log-entry ${log.type}">[${log.timestamp}] ${log.message}</div>`;
+            });
+            
+            logDiv.innerHTML = html;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        // 清空事件日志
+        function clearEventLog() {
+            eventLog = [];
+            updateEventLog();
+        }
+        
+        // 生成测试数据
+        function generateTestData() {
+            const data = [];
+            const startTime = Math.floor(Date.now() / 1000) - 86400 * 30; // 30天前
+            let price = 100;
+            
+            for (let i = 0; i < 100; i++) {
+                const time = startTime + i * 86400; // 每天一个数据点
+                const change = (Math.random() - 0.5) * 4; // -2 到 +2 的随机变化
+                price += change;
+                
+                const open = price;
+                const close = price + (Math.random() - 0.5) * 2;
+                const high = Math.max(open, close) + Math.random() * 1;
+                const low = Math.min(open, close) - Math.random() * 1;
+                
+                data.push({
+                    time: time,
+                    open: parseFloat(open.toFixed(2)),
+                    high: parseFloat(high.toFixed(2)),
+                    low: parseFloat(low.toFixed(2)),
+                    close: parseFloat(close.toFixed(2))
+                });
+                
+                price = close;
+            }
+            
+            return data;
+        }
+        
+        // MainChart测试函数
+        function createMainChart() {
+            try {
+                const container = document.getElementById('mainChartContainer');
+                if (!container) {
+                    updateStatus('mainChartStatus', '❌ 容器不存在');
+                    return;
+                }
+
+                // 清空容器
+                container.innerHTML = '';
+
+                // 创建主图
+                testMainChart = new MainChart(container);
+                testMainChart.create();
+
+                updateStatus('mainChartStatus', '✅ 主图创建成功');
+                addLog('MainChart 创建成功', 'success');
+
+            } catch (error) {
+                updateStatus('mainChartStatus', `❌ 创建失败: ${error.message}`);
+                addLog(`MainChart 创建失败: ${error.message}`, 'error');
+            }
+        }
+
+        function loadMainChartData() {
+            if (!testMainChart) {
+                updateStatus('mainChartStatus', '❌ 请先创建主图');
+                return;
+            }
+
+            try {
+                // 测试数据加载
+                const codes = ['HK.02432']; // 测试股票代码（使用实际存在的数据）
+                const indicators = ['ma5', 'ma10', 'supertrend']; // 测试指标
+
+                testMainChart.loadData(codes, indicators)
+                    .then(() => {
+                        updateStatus('mainChartStatus', '✅ 数据加载成功');
+                        addLog('MainChart 数据加载成功', 'success');
+                    })
+                    .catch(error => {
+                        updateStatus('mainChartStatus', `❌ 数据加载失败: ${error.message}`);
+                        addLog(`MainChart 数据加载失败: ${error.message}`, 'error');
+                    });
+
+                updateStatus('mainChartStatus', '⏳ 正在加载数据...');
+
+            } catch (error) {
+                updateStatus('mainChartStatus', `❌ 加载失败: ${error.message}`);
+                addLog(`MainChart 数据加载失败: ${error.message}`, 'error');
+            }
+        }
+
+        function clearMainChart() {
+            if (!testMainChart) {
+                updateStatus('mainChartStatus', '❌ 请先创建主图');
+                return;
+            }
+
+            try {
+                testMainChart.clearData();
+                updateStatus('mainChartStatus', '✅ 数据已清空');
+                addLog('MainChart 数据已清空', 'success');
+
+            } catch (error) {
+                updateStatus('mainChartStatus', `❌ 清空失败: ${error.message}`);
+                addLog(`MainChart 清空失败: ${error.message}`, 'error');
+            }
+        }
+
+        function destroyMainChart() {
+            if (!testMainChart) {
+                updateStatus('mainChartStatus', '❌ 主图不存在');
+                return;
+            }
+
+            try {
+                testMainChart.destroy();
+                testMainChart = null;
+                
+                // 清空容器
+                const container = document.getElementById('mainChartContainer');
+                if (container) {
+                    container.innerHTML = '';
+                }
+
+                updateStatus('mainChartStatus', '✅ 主图已销毁');
+                addLog('MainChart 已销毁', 'success');
+
+            } catch (error) {
+                updateStatus('mainChartStatus', `❌ 销毁失败: ${error.message}`);
+                addLog(`MainChart 销毁失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 更新状态显示的辅助函数
+        function updateStatus(elementId, message) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.textContent = message;
+            }
+        }
+        
+        // 检查LightweightCharts API
+        function checkLightweightChartsAPI() {
+            if (window.LightweightCharts) {
+                addLog('success', `LightweightCharts版本: ${window.LightweightCharts.version || '未知'}`);
+                addLog('info', `createChart方法: ${typeof window.LightweightCharts.createChart}`);
+                
+                // 测试创建一个临时图表来检查API
+                try {
+                    const tempContainer = document.createElement('div');
+                    tempContainer.style.width = '100px';
+                    tempContainer.style.height = '100px';
+                    document.body.appendChild(tempContainer);
+                    
+                    const tempChart = window.LightweightCharts.createChart(tempContainer, {
+                        width: 100,
+                        height: 100
+                    });
+                    
+                    addLog('info', `图表方法检查: addCandlestickSeries=${typeof tempChart.addCandlestickSeries}, addLineSeries=${typeof tempChart.addLineSeries}`);
+                    
+                    // 清理
+                    tempChart.remove();
+                    document.body.removeChild(tempContainer);
+                    
+                } catch (error) {
+                    addLog('error', `LightweightCharts API测试失败: ${error.message}`);
+                }
+            } else {
+                addLog('error', 'LightweightCharts未加载');
+            }
+        }
+    </script>
+</body>
+</html> 

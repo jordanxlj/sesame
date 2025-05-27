@@ -54,6 +54,11 @@ def load_kline(code):
 def index():
     return render_template('index.html')
 
+@app.route('/test-v2')
+def test_v2():
+    """V2.1.0 核心系统测试页面"""
+    return render_template('test_v2.html')
+
 @app.route('/api/stocks')
 def api_stocks():
     """获取股票代码列表"""
