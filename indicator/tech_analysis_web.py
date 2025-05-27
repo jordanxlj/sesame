@@ -29,10 +29,30 @@ class TechAnalysis:
         trend_series = pd.Series(trend, index=df.index)
         buy_signal = (trend_series == 1) & (trend_series.shift(1) == -1)
         sell_signal = (trend_series == -1) & (trend_series.shift(1) == 1)
+        # 创建SuperTrend线：上升趋势显示下轨，下降趋势显示上轨
         st_line = np.where(trend_series == 1, up_adj, dn_adj)
+        
+        # 确保SuperTrend值有效
+        st_series = pd.Series(st_line, index=df.index)
+        
+        # 过滤掉0值和无效值
+        st_series = st_series.where((st_series > 0) & (st_series.notna()), None)
+        
+        # 调试信息
+        print(f"SuperTrend计算完成:")
+        print(f"  数据长度: {len(df)}")
+        print(f"  有效SuperTrend值: {st_series.notna().sum()}")
+        if st_series.notna().sum() > 0:
+            print(f"  SuperTrend范围: {st_series.min():.2f} - {st_series.max():.2f}")
+        print(f"  上升趋势数量: {(trend_series == 1).sum()}")
+        print(f"  下降趋势数量: {(trend_series == -1).sum()}")
+        print(f"  前5个SuperTrend值: {st_series.head().tolist()}")
+        print(f"  后5个SuperTrend值: {st_series.tail().tolist()}")
+        print(f"  零值数量: {(st_series == 0).sum()}")
+        
         return pd.DataFrame({
             'time': df['time'],
-            'supertrend': pd.Series(st_line).where(pd.notnull(st_line), None),
+            'supertrend': st_series,
             'trend': trend_series.astype(int),
             'buy': buy_signal.astype(int),
             'sell': sell_signal.astype(int)

@@ -920,23 +920,207 @@ class MainChart extends BaseChart {
      * 处理十字线移动
      */
     handleCrosshairMove(param) {
-        // 发送十字线移动事件
-        this.emit('crosshairMove', {
-            source: this.getSourceName(),
-            param: param,
-            chartId: this.id
-        });
+        try {
+            // 发送十字线移动事件
+            this.emit('crosshairMove', {
+                source: this.getSourceName(),
+                param: param,
+                chartId: this.id
+            });
+            
+            // 更新信息栏
+            this.updateInfoBar(param);
+        } catch (error) {
+            console.error('❌ 处理十字线移动失败:', error);
+            // 如果出错，显示最新数据
+            this.updateInfoBarWithLatestData();
+        }
+    }
+    
+    /**
+     * 创建价格信息栏
+     */
+    createInfoBar() {
+        // 检查是否已存在信息栏
+        let infoBar = document.getElementById('price-info-bar');
+        if (infoBar) {
+            return infoBar;
+        }
         
-        // 更新信息栏
-        this.updateInfoBar(param);
+        // 创建信息栏容器
+        infoBar = document.createElement('div');
+        infoBar.id = 'price-info-bar';
+        infoBar.style.cssText = `
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            line-height: 1.2;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            max-width: 90%;
+            white-space: nowrap;
+            overflow: hidden;
+        `;
+        
+        // 添加到图表容器
+        this.container.style.position = 'relative';
+        this.container.appendChild(infoBar);
+        
+        return infoBar;
     }
     
     /**
      * 更新信息栏
      */
     updateInfoBar(param) {
-        // TODO: 实现信息栏更新逻辑
-        console.log('📊 更新信息栏:', param);
+        const infoBar = this.createInfoBar();
+        
+        if (!param || !param.time) {
+            // 显示最新数据
+            this.updateInfoBarWithLatestData();
+            return;
+        }
+        
+        // 安全地转换时间
+        let timeStr = '';
+        try {
+            if (typeof param.time === 'number' && isFinite(param.time) && param.time > 0) {
+                // 时间戳格式
+                const date = new Date(param.time * 1000);
+                if (!isNaN(date.getTime())) {
+                    timeStr = date.toISOString().split('T')[0];
+                } else {
+                    console.warn('Invalid date from param.time:', param.time);
+                    this.updateInfoBarWithLatestData();
+                    return;
+                }
+            } else if (typeof param.time === 'string') {
+                // 字符串格式的日期，直接使用
+                timeStr = param.time;
+                console.log('📅 使用字符串时间:', timeStr);
+            } else {
+                console.warn('Invalid param.time value:', param.time, 'type:', typeof param.time);
+                this.updateInfoBarWithLatestData();
+                return;
+            }
+        } catch (error) {
+            console.error('Error converting time:', error, 'param.time:', param.time);
+            this.updateInfoBarWithLatestData();
+            return;
+        }
+        
+        let ohlcData = null;
+        let indicators = {};
+        
+        // 查找K线数据
+        if (this.stockInfos.length > 0 && this.stockInfos[0].data) {
+            ohlcData = this.stockInfos[0].data.find(item => item.time === timeStr);
+        }
+        
+        // 获取指标数据
+        if (param.seriesData) {
+            param.seriesData.forEach((seriesData, index) => {
+                if (seriesData && this.series[index]) {
+                    const seriesTitle = this.series[index].options?.title || `Series ${index}`;
+                    if (seriesTitle.includes('SuperTrend')) {
+                        indicators[seriesTitle] = seriesData.value;
+                    } else if (seriesTitle.includes('MA')) {
+                        indicators[seriesTitle] = seriesData.value;
+                    }
+                }
+            });
+        }
+        
+        this.renderInfoBar(infoBar, ohlcData, indicators, timeStr);
+    }
+    
+    /**
+     * 使用最新数据更新信息栏
+     */
+    updateInfoBarWithLatestData() {
+        const infoBar = this.createInfoBar();
+        
+        if (this.stockInfos.length === 0 || !this.stockInfos[0].data) {
+            infoBar.innerHTML = '<div style="color: #666;">暂无数据</div>';
+            return;
+        }
+        
+        const latestData = this.stockInfos[0].data[this.stockInfos[0].data.length - 1];
+        this.renderInfoBar(infoBar, latestData, {}, latestData.time);
+    }
+    
+    /**
+     * 渲染信息栏内容
+     */
+    renderInfoBar(infoBar, ohlcData, indicators, timeStr) {
+        if (!ohlcData) {
+            infoBar.innerHTML = `
+                <div style="color: #666;">
+                    <div><strong>${timeStr || '当前'}</strong></div>
+                    <div>暂无数据</div>
+                </div>
+            `;
+            return;
+        }
+        
+        // 计算涨跌幅
+        const change = ohlcData.close - ohlcData.open;
+        const changePercent = ((change / ohlcData.open) * 100);
+        const changeColor = change >= 0 ? '#26a69a' : '#ef5350';
+        const changeSign = change >= 0 ? '+' : '';
+        
+        // 构建HTML内容 - 单行显示
+        let html = `
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <strong style="color: #333;">${this.stockInfos[0]?.code || 'Stock'}</strong>
+                <span style="color: #666;">${timeStr}</span>
+                <span>开: <strong>${ohlcData.open.toFixed(2)}</strong></span>
+                <span>高: <strong style="color: #26a69a;">${ohlcData.high.toFixed(2)}</strong></span>
+                <span>低: <strong style="color: #ef5350;">${ohlcData.low.toFixed(2)}</strong></span>
+                <span>收: <strong>${ohlcData.close.toFixed(2)}</strong></span>
+                <span style="color: ${changeColor};">
+                    <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
+                </span>
+        `;
+        
+        // 添加换手率信息
+        if (ohlcData.turnover_rate) {
+            html += `<span style="color: #666;">换手率: ${(ohlcData.turnover_rate * 100).toFixed(2)}%</span>`;
+        }
+        
+        html += `</div>`;
+        
+        // 添加指标信息到同一行
+        if (Object.keys(indicators).length > 0) {
+            for (const [name, value] of Object.entries(indicators)) {
+                if (value !== null && value !== undefined) {
+                    const color = name.includes('Up') ? '#26a69a' : name.includes('Down') ? '#ef5350' : '#666';
+                    const shortName = name.replace('HK.02432 ', ''); // 简化指标名称
+                    html += `<span style="color: ${color}; margin-left: 8px;">${shortName}: ${value.toFixed(2)}</span>`;
+                }
+            }
+        }
+        
+        infoBar.innerHTML = html;
+    }
+    
+    /**
+     * 格式化成交量显示
+     */
+    formatVolume(volume) {
+        if (volume >= 1e8) {
+            return (volume / 1e8).toFixed(2) + '亿';
+        } else if (volume >= 1e4) {
+            return (volume / 1e4).toFixed(2) + '万';
+        } else {
+            return volume.toString();
+        }
     }
     
     /**
@@ -1147,6 +1331,12 @@ class MainChart extends BaseChart {
             
             const data = await response.json();
             
+            console.log(`🔍 ${indicator} API返回数据:`, {
+                length: data?.length,
+                sample: data?.slice(0, 3),
+                lastItem: data?.[data.length - 1]
+            });
+            
             if (!data || !Array.isArray(data) || data.length === 0) {
                 console.warn(`⚠️ ${code}: ${indicator} 指标数据为空`);
                 return;
@@ -1202,9 +1392,24 @@ class MainChart extends BaseChart {
                 title: `${stockInfo.code} SuperTrend Down`
             });
             
+            // 过滤掉所有null值的数据点，只保留有效数据
+            const validUptrend = processedData.uptrend.filter(item => item.value !== null && item.value > 0);
+            const validDowntrend = processedData.downtrend.filter(item => item.value !== null && item.value > 0);
+            
             // 设置数据
-            uptrendSeries.setData(processedData.uptrend);
-            downtrendSeries.setData(processedData.downtrend);
+            if (validUptrend.length > 0) {
+                uptrendSeries.setData(validUptrend);
+                console.log(`✅ SuperTrend上升趋势数据已设置: ${validUptrend.length}点`);
+            } else {
+                console.log(`⚠️ SuperTrend上升趋势无有效数据`);
+            }
+            
+            if (validDowntrend.length > 0) {
+                downtrendSeries.setData(validDowntrend);
+                console.log(`✅ SuperTrend下降趋势数据已设置: ${validDowntrend.length}点`);
+            } else {
+                console.log(`⚠️ SuperTrend下降趋势无有效数据`);
+            }
             
             console.log(`✅ SuperTrend指标已添加 (股票${stockIndex})`);
             
@@ -1220,20 +1425,30 @@ class MainChart extends BaseChart {
         const uptrend = [];
         const downtrend = [];
         
+        console.log('🔍 SuperTrend数据样本:', data.slice(0, 3)); // 调试日志
+        
         data.forEach(item => {
             if (item && item.time) {
-                if (item.supertrend_direction === 1 && item.supertrend !== null) {
-                    uptrend.push({ time: item.time, value: item.supertrend });
+                // 兼容不同的字段名：trend 或 supertrend_direction
+                const direction = item.trend || item.supertrend_direction;
+                const value = item.supertrend;
+                
+                // 过滤掉值为0或无效的数据点
+                if (direction === 1 && value !== null && isFinite(value) && value > 0) {
+                    uptrend.push({ time: item.time, value: value });
                     downtrend.push({ time: item.time, value: null });
-                } else if (item.supertrend_direction === -1 && item.supertrend !== null) {
-                    downtrend.push({ time: item.time, value: item.supertrend });
+                } else if (direction === -1 && value !== null && isFinite(value) && value > 0) {
+                    downtrend.push({ time: item.time, value: value });
                     uptrend.push({ time: item.time, value: null });
                 } else {
+                    // 对于无效值（包括0值），不显示任何线条
                     uptrend.push({ time: item.time, value: null });
                     downtrend.push({ time: item.time, value: null });
                 }
             }
         });
+        
+        console.log(`📊 SuperTrend处理结果: 上升趋势${uptrend.filter(d => d.value !== null && d.value > 0).length}点, 下降趋势${downtrend.filter(d => d.value !== null && d.value > 0).length}点`);
         
         return { uptrend, downtrend };
     }
@@ -1349,6 +1564,11 @@ class MainChart extends BaseChart {
                 console.warn('适配内容失败:', error);
             }
         }
+        
+        // 初始化价格信息栏
+        setTimeout(() => {
+            this.updateInfoBarWithLatestData();
+        }, 100);
     }
     
     /**
@@ -1383,11 +1603,17 @@ class MainChart extends BaseChart {
                 // 清空系列数组
                 this.series = [];
                 
-                // 重新创建成交量系列
-                this.setupVolumeSeries();
-            }
-            
-            console.log('✅ MainChart 数据已清空');
+                            // 重新创建成交量系列
+            this.setupVolumeSeries();
+        }
+        
+        // 清理价格信息栏
+        const infoBar = document.getElementById('price-info-bar');
+        if (infoBar) {
+            infoBar.remove();
+        }
+        
+        console.log('✅ MainChart 数据已清空');
             
         } catch (error) {
             console.error('❌ 清空数据失败:', error);

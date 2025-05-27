@@ -95,10 +95,16 @@ def api_indicator():
     if indicator == 'supertrend':
         st = TechAnalysis.supertrend(df)
         st = st.applymap(lambda x: None if pd.isna(x) else x)
+        
+        # 过滤掉SuperTrend值为0或无效的数据
+        st['supertrend'] = st['supertrend'].apply(lambda x: None if x is None or x == 0 or not isinstance(x, (int, float)) else x)
+        
         data = st.to_dict(orient='records')
         for row in data:
             for k, v in row.items():
-                if isinstance(v, float) and (v != v):
+                if isinstance(v, float) and (v != v):  # NaN检查
+                    row[k] = None
+                elif k == 'supertrend' and (v == 0 or v is None):  # 过滤0值
                     row[k] = None
         return jsonify(data)
     elif indicator == 'squeeze_momentum':
