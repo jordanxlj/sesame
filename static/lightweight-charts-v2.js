@@ -863,6 +863,8 @@ class MainChart extends BaseChart {
         this.normalizationEnabled = false; // 价格归一化状态
         this.basePrice = null; // 基准价格
         this.originalStockData = []; // 存储原始股票数据，用于归一化恢复
+        this.stockVisibility = []; // 股票可见性状态
+        this.legendContainer = null; // 图例容器
         
         // 注册为主图
         ChartRegistry.register(this.id, this, true);
@@ -997,6 +999,179 @@ class MainChart extends BaseChart {
     }
     
     /**
+     * 创建股票图例
+     */
+    createStockLegend() {
+        // 检查是否已存在图例
+        let legend = document.getElementById('stock-legend');
+        if (legend) {
+            return legend;
+        }
+        
+        // 创建图例容器
+        legend = document.createElement('div');
+        legend.id = 'stock-legend';
+        legend.style.cssText = `
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            line-height: 1.4;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            max-width: 200px;
+            min-width: 120px;
+        `;
+        
+        // 添加到图表容器
+        this.container.style.position = 'relative';
+        this.container.appendChild(legend);
+        this.legendContainer = legend;
+        
+        return legend;
+    }
+    
+    /**
+     * 更新股票图例
+     */
+    updateStockLegend() {
+        const legend = this.createStockLegend();
+        
+        if (this.stockInfos.length === 0) {
+            legend.innerHTML = '<div style="color: #666;">暂无股票</div>';
+            return;
+        }
+        
+        let html = '<div style="font-weight: bold; margin-bottom: 6px; color: #333;">股票列表</div>';
+        
+        this.stockInfos.forEach((stockInfo, index) => {
+            if (!stockInfo) return;
+            
+            const isVisible = this.stockVisibility[index] !== false;
+            const opacity = isVisible ? '1' : '0.5';
+            const textDecoration = isVisible ? 'none' : 'line-through';
+            
+            html += `
+                <div style="display: flex; align-items: center; margin-bottom: 4px; cursor: pointer; opacity: ${opacity}; text-decoration: ${textDecoration};" 
+                     onclick="window.toggleStock(${index})" title="点击切换显示/隐藏">
+                    <div style="width: 12px; height: 12px; background: ${stockInfo.colorScheme.upColor}; margin-right: 6px; border-radius: 2px;"></div>
+                    <span style="color: #333; font-weight: ${stockInfo.isMain ? 'bold' : 'normal'};">
+                        ${stockInfo.code}${stockInfo.isMain ? ' (主)' : ''}
+                    </span>
+                </div>
+            `;
+        });
+        
+        // 添加归一化控制
+        html += `
+            <div style="border-top: 1px solid #e0e0e0; margin-top: 8px; padding-top: 6px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" ${this.normalizationEnabled ? 'checked' : ''} 
+                           onchange="window.toggleNormalization()" style="margin-right: 6px;">
+                    <span style="color: #666; font-size: 11px;">价格归一化</span>
+                </label>
+            </div>
+        `;
+        
+        legend.innerHTML = html;
+    }
+    
+    /**
+     * 切换股票显示状态
+     */
+    toggleStockVisibility(index) {
+        if (index < 0 || index >= this.stockInfos.length) return;
+        
+        // 切换可见性状态
+        this.stockVisibility[index] = this.stockVisibility[index] !== false ? false : true;
+        
+        // 更新K线系列可见性
+        if (this.candleSeries[index]) {
+            this.candleSeries[index].applyOptions({
+                visible: this.stockVisibility[index]
+            });
+        }
+        
+        // 更新图例
+        this.updateStockLegend();
+        
+        console.log(`📊 股票 ${this.stockInfos[index].code} 可见性已切换为: ${this.stockVisibility[index]}`);
+    }
+    
+    /**
+     * 切换价格归一化
+     */
+    toggleNormalization() {
+        this.normalizationEnabled = !this.normalizationEnabled;
+        
+        if (this.normalizationEnabled) {
+            this.enableNormalization();
+        } else {
+            this.disableNormalization();
+        }
+        
+        this.updateStockLegend();
+        console.log(`📊 价格归一化已${this.normalizationEnabled ? '启用' : '禁用'}`);
+    }
+    
+    /**
+     * 启用价格归一化
+     */
+    enableNormalization() {
+        if (this.stockInfos.length === 0) return;
+        
+        // 使用第一只股票的第一个价格作为基准
+        const baseStock = this.stockInfos[0];
+        if (!baseStock || !baseStock.data || baseStock.data.length === 0) return;
+        
+        this.basePrice = baseStock.data[0].close;
+        
+        // 归一化所有股票数据
+        this.stockInfos.forEach((stockInfo, index) => {
+            if (!stockInfo || !stockInfo.data) return;
+            
+            const firstPrice = stockInfo.data[0].close;
+            const normalizedData = stockInfo.data.map(item => ({
+                ...item,
+                open: (item.open / firstPrice) * this.basePrice,
+                high: (item.high / firstPrice) * this.basePrice,
+                low: (item.low / firstPrice) * this.basePrice,
+                close: (item.close / firstPrice) * this.basePrice
+            }));
+            
+            // 更新K线系列数据
+            if (this.candleSeries[index]) {
+                this.candleSeries[index].setData(normalizedData);
+            }
+        });
+        
+        console.log(`📊 价格归一化已启用，基准价格: ${this.basePrice}`);
+    }
+    
+    /**
+     * 禁用价格归一化
+     */
+    disableNormalization() {
+        // 恢复原始数据
+        this.stockInfos.forEach((stockInfo, index) => {
+            if (!stockInfo || !this.originalStockData[index]) return;
+            
+            // 恢复原始数据
+            if (this.candleSeries[index]) {
+                this.candleSeries[index].setData(this.originalStockData[index]);
+            }
+        });
+        
+        this.basePrice = null;
+        console.log('📊 价格归一化已禁用，已恢复原始价格');
+    }
+    
+    /**
      * 创建价格信息栏
      */
     createInfoBar() {
@@ -1062,7 +1237,7 @@ class MainChart extends BaseChart {
             } else if (typeof param.time === 'string') {
                 // 字符串格式的日期，直接使用
                 timeStr = param.time;
-                console.log('📅 使用字符串时间:', timeStr);
+                //console.log('📅 使用字符串时间:', timeStr);
             } else {
                 console.warn('Invalid param.time value:', param.time, 'type:', typeof param.time);
                 this.updateInfoBarWithLatestData();
@@ -1096,7 +1271,27 @@ class MainChart extends BaseChart {
             });
         }
         
-        this.renderInfoBar(infoBar, ohlcData, indicators, timeStr);
+        // 收集所有股票的数据用于多股票显示
+        const allStockData = [];
+        this.stockInfos.forEach((stockInfo, index) => {
+            if (stockInfo && stockInfo.data && this.stockVisibility[index] !== false) {
+                const stockOhlcData = stockInfo.data.find(item => item.time === timeStr);
+                if (stockOhlcData) {
+                    allStockData.push({
+                        ...stockOhlcData,
+                        stockInfo: stockInfo,
+                        index: index
+                    });
+                }
+            }
+        });
+        
+        // 如果有多只股票，使用多股票渲染，否则使用单股票渲染
+        if (allStockData.length > 1) {
+            this.renderMultiStockInfoBar(infoBar, allStockData, indicators, timeStr);
+        } else {
+            this.renderInfoBar(infoBar, ohlcData, indicators, timeStr);
+        }
     }
     
     /**
@@ -1166,6 +1361,81 @@ class MainChart extends BaseChart {
             }
         }
         
+        infoBar.innerHTML = html;
+    }
+    
+    /**
+     * 渲染多股票信息栏内容
+     */
+    renderMultiStockInfoBar(infoBar, allStockData, indicators, timeStr) {
+        if (!allStockData || allStockData.length === 0) {
+            infoBar.innerHTML = `
+                <div style="color: #666;">
+                    <div><strong>${timeStr || '当前'}</strong></div>
+                    <div>暂无数据</div>
+                </div>
+            `;
+            return;
+        }
+        
+        // 构建多股票显示的HTML
+        let html = `
+            <div style="background: rgba(255, 255, 255, 0.95); border: 1px solid #e0e0e0; border-radius: 4px; padding: 8px; font-size: 11px; line-height: 1.3;">
+                <div style="font-weight: bold; margin-bottom: 6px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 4px;">
+                    📊 多股票对比 - ${timeStr}
+                </div>
+        `;
+        
+        // 为每只股票添加一行信息
+        allStockData.forEach((stockData, idx) => {
+            const stockInfo = stockData.stockInfo;
+            const change = stockData.close - stockData.open;
+            const changePercent = ((change / stockData.open) * 100);
+            const changeColor = change >= 0 ? stockInfo.colorScheme.upColor : stockInfo.colorScheme.downColor;
+            const changeSign = change >= 0 ? '+' : '';
+            
+            html += `
+                <div style="display: flex; align-items: center; margin-bottom: 3px; padding: 2px 0;">
+                    <div style="width: 8px; height: 8px; background: ${stockInfo.colorScheme.upColor}; margin-right: 6px; border-radius: 50%; flex-shrink: 0;"></div>
+                    <div style="min-width: 60px; font-weight: bold; color: #333; margin-right: 8px;">${stockInfo.code}</div>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 10px;">
+                        <span>开: <strong>${stockData.open.toFixed(2)}</strong></span>
+                        <span>高: <strong style="color: ${stockInfo.colorScheme.upColor};">${stockData.high.toFixed(2)}</strong></span>
+                        <span>低: <strong style="color: ${stockInfo.colorScheme.downColor};">${stockData.low.toFixed(2)}</strong></span>
+                        <span>收: <strong>${stockData.close.toFixed(2)}</strong></span>
+                        <span style="color: ${changeColor};">
+                            <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
+                        </span>
+            `;
+            
+            // 添加换手率信息
+            if (stockData.turnover_rate) {
+                html += `<span style="color: #666;">换手率: ${(stockData.turnover_rate * 100).toFixed(2)}%</span>`;
+            }
+            
+            html += `</div></div>`;
+        });
+        
+        // 添加指标信息
+        if (Object.keys(indicators).length > 0) {
+            html += `
+                <div style="border-top: 1px solid #eee; margin-top: 6px; padding-top: 4px;">
+                    <div style="font-weight: bold; color: #666; margin-bottom: 3px;">技术指标</div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px;">
+            `;
+            
+            for (const [name, value] of Object.entries(indicators)) {
+                if (value !== null && value !== undefined) {
+                    const color = name.includes('Up') ? '#26a69a' : name.includes('Down') ? '#ef5350' : '#666';
+                    const shortName = name.replace(/HK\.\d+\s/, ''); // 简化指标名称
+                    html += `<span style="color: ${color};">${shortName}: ${value.toFixed(2)}</span>`;
+                }
+            }
+            
+            html += `</div></div>`;
+        }
+        
+        html += `</div>`;
         infoBar.innerHTML = html;
     }
     
@@ -1279,6 +1549,9 @@ class MainChart extends BaseChart {
             data: ohlc,
             isMain: index === 0
         };
+        
+        // 初始化可见性状态
+        this.stockVisibility[index] = true;
         
         console.log(`📊 股票信息已存储: ${code}`);
     }
@@ -1633,9 +1906,10 @@ class MainChart extends BaseChart {
             this.optimizePriceRange();
         }, 200);
         
-        // 初始化价格信息栏
+        // 初始化价格信息栏和股票图例
         setTimeout(() => {
             this.updateInfoBarWithLatestData();
+            this.updateStockLegend();
         }, 100);
     }
     
@@ -1969,11 +2243,17 @@ class MainChart extends BaseChart {
             this.setupVolumeSeries();
         }
         
-        // 清理价格信息栏
+        // 清理价格信息栏和股票图例
         const infoBar = document.getElementById('price-info-bar');
         if (infoBar) {
             infoBar.remove();
         }
+        
+        const legend = document.getElementById('stock-legend');
+        if (legend) {
+            legend.remove();
+        }
+        this.legendContainer = null;
         
         console.log('✅ MainChart 数据已清空');
             
@@ -2027,6 +2307,21 @@ window.EventEmitter = EventEmitter;
 window.ChartRegistry = ChartRegistry;
 window.BaseChart = BaseChart;
 window.MainChart = MainChart;
+
+// 全局回调函数，用于图例交互
+window.toggleStock = function(index) {
+    const mainChart = ChartRegistry.getMainChart();
+    if (mainChart && mainChart.toggleStockVisibility) {
+        mainChart.toggleStockVisibility(index);
+    }
+};
+
+window.toggleNormalization = function() {
+    const mainChart = ChartRegistry.getMainChart();
+    if (mainChart && mainChart.toggleNormalization) {
+        mainChart.toggleNormalization();
+    }
+};
 
 console.log('🚀 LightWeight Charts V2.1.0 - 核心系统已加载');
 console.log('📊 可用组件:', {
