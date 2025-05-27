@@ -858,11 +858,12 @@ class MainChart extends BaseChart {
         this.candleSeries = [];
         this.indicatorSeries = [];
         this.stockIndicatorSeries = []; // 存储每只股票的指标系列
+        this.originalIndicatorData = []; // 存储原始指标数据，用于归一化恢复
         this.currentOhlcData = null;
         this.subCharts = [];
         this.stockInfos = []; // 存储股票信息
         this.normalizationEnabled = false; // 价格归一化状态
-        this.basePrice = null; // 基准价格
+        this.normalizationRatios = []; // 存储每只股票的归一化比例
         this.originalStockData = []; // 存储原始股票数据，用于归一化恢复
         this.stockVisibility = []; // 股票可见性状态
         this.legendContainer = null; // 图例容器
@@ -1033,7 +1034,8 @@ class MainChart extends BaseChart {
         
         // 更新该股票的所有指标系列可见性
         if (this.stockIndicatorSeries[index]) {
-            this.stockIndicatorSeries[index].forEach(series => {
+            this.stockIndicatorSeries[index].forEach(indicatorInfo => {
+                const series = indicatorInfo.series || indicatorInfo; // 兼容旧格式
                 if (series && series.applyOptions) {
                     series.applyOptions({
                         visible: this.stockVisibility[index]
@@ -1074,28 +1076,82 @@ class MainChart extends BaseChart {
         const baseStock = this.stockInfos[0];
         if (!baseStock || !baseStock.data || baseStock.data.length === 0) return;
         
-        this.basePrice = baseStock.data[0].close;
+        const basePrice = baseStock.data[0].close;
         
-        // 归一化所有股票数据
+        // 计算并存储每只股票的归一化比例
+        this.normalizationRatios = this.stockInfos.map(stockInfo => {
+            if (!stockInfo || !stockInfo.data || stockInfo.data.length === 0) return 1;
+            const firstPrice = stockInfo.data[0].close;
+            return basePrice / firstPrice;
+        });
+        
+        // 应用归一化
+        this.applyNormalization();
+        
+        console.log(`📊 价格归一化已启用，基准价格: ${basePrice}，比例:`, this.normalizationRatios);
+    }
+    
+    /**
+     * 应用归一化到所有数据
+     */
+    applyNormalization() {
         this.stockInfos.forEach((stockInfo, index) => {
             if (!stockInfo || !stockInfo.data) return;
             
-            const firstPrice = stockInfo.data[0].close;
-            const normalizedData = stockInfo.data.map(item => ({
+            const ratio = this.normalizationRatios[index] || 1;
+            
+            // 归一化K线数据
+            const normalizedData = this.originalStockData[index].map(item => ({
                 ...item,
-                open: (item.open / firstPrice) * this.basePrice,
-                high: (item.high / firstPrice) * this.basePrice,
-                low: (item.low / firstPrice) * this.basePrice,
-                close: (item.close / firstPrice) * this.basePrice
+                open: item.open * ratio,
+                high: item.high * ratio,
+                low: item.low * ratio,
+                close: item.close * ratio
             }));
             
             // 更新K线系列数据
             if (this.candleSeries[index]) {
                 this.candleSeries[index].setData(normalizedData);
             }
+            
+            // 归一化该股票的所有指标数据
+            this.applyIndicatorNormalization(index, ratio);
+        });
+    }
+    
+    /**
+     * 应用指标归一化
+     */
+    applyIndicatorNormalization(stockIndex, ratio) {
+        if (!this.stockIndicatorSeries[stockIndex]) return;
+        
+        this.stockIndicatorSeries[stockIndex].forEach(indicatorInfo => {
+            const series = indicatorInfo.series || indicatorInfo; // 兼容旧格式
+            const type = indicatorInfo.type;
+            const originalData = indicatorInfo.originalData;
+            
+            if (!series || !originalData) return;
+            
+            try {
+                if (type && (type.includes('supertrend') || type === 'ma5' || type === 'ma10')) {
+                    // 动态计算归一化后的指标数据
+                    const normalizedData = originalData.map(item => ({
+                        ...item,
+                        value: item.value * ratio
+                    }));
+                    series.setData(normalizedData);
+                }
+                // 其他类型的指标（如Squeeze momentum）不需要归一化
+                
+            } catch (error) {
+                console.warn(`归一化指标失败 (股票${stockIndex}, 类型${type}):`, error);
+            }
         });
         
-        console.log(`📊 价格归一化已启用，基准价格: ${this.basePrice}`);
+        // 买卖信号标记会自动跟随K线位置，无需手动调整
+        if (this.originalIndicatorData[stockIndex] && this.originalIndicatorData[stockIndex].markers && this.candleSeries[stockIndex]) {
+            this.candleSeries[stockIndex].setMarkers(this.originalIndicatorData[stockIndex].markers);
+        }
     }
     
     /**
@@ -1106,14 +1162,49 @@ class MainChart extends BaseChart {
         this.stockInfos.forEach((stockInfo, index) => {
             if (!stockInfo || !this.originalStockData[index]) return;
             
-            // 恢复原始数据
+            // 恢复原始K线数据
             if (this.candleSeries[index]) {
                 this.candleSeries[index].setData(this.originalStockData[index]);
             }
+            
+            // 恢复原始指标数据
+            this.restoreOriginalIndicators(index);
         });
         
-        this.basePrice = null;
-        console.log('📊 价格归一化已禁用，已恢复原始价格');
+        // 清空归一化比例
+        this.normalizationRatios = [];
+        console.log('📊 价格归一化已禁用，已恢复原始价格和指标');
+    }
+    
+    /**
+     * 恢复原始指标数据
+     */
+    restoreOriginalIndicators(stockIndex) {
+        if (!this.stockIndicatorSeries[stockIndex]) return;
+        
+        this.stockIndicatorSeries[stockIndex].forEach(indicatorInfo => {
+            const series = indicatorInfo.series || indicatorInfo; // 兼容旧格式
+            const type = indicatorInfo.type;
+            const originalData = indicatorInfo.originalData;
+            
+            if (!series || !originalData) return;
+            
+            try {
+                if (type && (type.includes('supertrend') || type === 'ma5' || type === 'ma10')) {
+                    // 恢复价格相关的指标原始数据
+                    series.setData(originalData);
+                }
+                // 其他类型的指标（如Squeeze momentum）不需要恢复
+                
+            } catch (error) {
+                console.warn(`恢复指标失败 (股票${stockIndex}, 类型${type}):`, error);
+            }
+        });
+        
+        // 恢复原始买卖信号标记
+        if (this.originalIndicatorData[stockIndex] && this.originalIndicatorData[stockIndex].markers && this.candleSeries[stockIndex]) {
+            this.candleSeries[stockIndex].setMarkers(this.originalIndicatorData[stockIndex].markers);
+        }
     }
     
     /**
@@ -1760,8 +1851,19 @@ class MainChart extends BaseChart {
                 this.stockIndicatorSeries[stockIndex] = [];
             }
             
+            // 初始化原始指标数据存储
+            if (!this.originalIndicatorData[stockIndex]) {
+                this.originalIndicatorData[stockIndex] = {};
+            }
+            
+            // 存储原始SuperTrend数据
+            this.originalIndicatorData[stockIndex].supertrend = JSON.parse(JSON.stringify(data));
+            
             // 处理SuperTrend数据，获取分段数据和信号点
             const processedData = this.processSupertrendDataAdvanced(data);
+            
+            // 存储处理后的原始数据
+            this.originalIndicatorData[stockIndex].processedSupertrend = JSON.parse(JSON.stringify(processedData));
             
             // 创建多段上升趋势线
             processedData.uptrendSegments.forEach((segment, index) => {
@@ -1775,8 +1877,12 @@ class MainChart extends BaseChart {
                         visible: this.stockVisibility[stockIndex] !== false
                     });
                     uptrendSeries.setData(segment);
-                    // 记录到该股票的指标系列中
-                    this.stockIndicatorSeries[stockIndex].push(uptrendSeries);
+                    // 记录到该股票的指标系列中，并标记类型
+                    this.stockIndicatorSeries[stockIndex].push({
+                        series: uptrendSeries,
+                        type: 'supertrend_up',
+                        originalData: segment
+                    });
                 }
             });
             
@@ -1792,8 +1898,12 @@ class MainChart extends BaseChart {
                         visible: this.stockVisibility[stockIndex] !== false
                     });
                     downtrendSeries.setData(segment);
-                    // 记录到该股票的指标系列中
-                    this.stockIndicatorSeries[stockIndex].push(downtrendSeries);
+                    // 记录到该股票的指标系列中，并标记类型
+                    this.stockIndicatorSeries[stockIndex].push({
+                        series: downtrendSeries,
+                        type: 'supertrend_down',
+                        originalData: segment
+                    });
                 }
             });
             
@@ -1834,6 +1944,9 @@ class MainChart extends BaseChart {
                     return timeA - timeB;
                 });
                 this.candleSeries[stockIndex].setMarkers(allMarkers);
+                
+                // 存储原始标记数据
+                this.originalIndicatorData[stockIndex].markers = JSON.parse(JSON.stringify(allMarkers));
             }
             
             console.log(`✅ SuperTrend指标已添加 (股票${stockIndex}): ${processedData.uptrendSegments.length}个上升段, ${processedData.downtrendSegments.length}个下降段, ${processedData.buySignals.length}个买入信号, ${processedData.sellSignals.length}个卖出信号`);
@@ -1970,6 +2083,11 @@ class MainChart extends BaseChart {
                 this.stockIndicatorSeries[stockIndex] = [];
             }
             
+            // 初始化原始指标数据存储
+            if (!this.originalIndicatorData[stockIndex]) {
+                this.originalIndicatorData[stockIndex] = {};
+            }
+            
             const maData = data
                 .filter(item => item && item.time && item.ma !== null && isFinite(item.ma))
                 .map(item => ({ time: item.time, value: item.ma }));
@@ -1978,6 +2096,9 @@ class MainChart extends BaseChart {
                 console.warn(`⚠️ ${indicator} 没有有效数据 (股票${stockIndex})`);
                 return;
             }
+            
+            // 存储原始MA数据
+            this.originalIndicatorData[stockIndex][indicator] = JSON.parse(JSON.stringify(maData));
             
             const maSeries = this.addSeries('line', {
                 priceScaleId: 'right',
@@ -1990,8 +2111,12 @@ class MainChart extends BaseChart {
             
             maSeries.setData(maData);
             
-            // 记录到该股票的指标系列中
-            this.stockIndicatorSeries[stockIndex].push(maSeries);
+            // 记录到该股票的指标系列中，并标记类型
+            this.stockIndicatorSeries[stockIndex].push({
+                series: maSeries,
+                type: indicator,
+                originalData: maData
+            });
             
             console.log(`✅ ${indicator} 指标已添加 (股票${stockIndex}), 数据点: ${maData.length}`);
             
@@ -2393,19 +2518,20 @@ class MainChart extends BaseChart {
      */
     clearData() {
         try {
-            // 清空所有系列
-            this.candleSeries = [];
-            this.indicatorSeries = [];
-            this.stockIndicatorSeries = [];
-            
-            // 清空股票信息
-            this.stockInfos = [];
-            this.originalStockData = [];
-            this.currentOhlcData = null;
-            
-            // 重置状态
-            this.normalizationEnabled = false;
-            this.basePrice = null;
+                    // 清空所有系列
+        this.candleSeries = [];
+        this.indicatorSeries = [];
+        this.stockIndicatorSeries = [];
+        this.originalIndicatorData = [];
+        
+        // 清空股票信息
+        this.stockInfos = [];
+        this.originalStockData = [];
+        this.currentOhlcData = null;
+        
+        // 重置状态
+        this.normalizationEnabled = false;
+        this.normalizationRatios = [];
             
             // 清空图表数据
             if (this.chart) {
