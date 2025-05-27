@@ -32,7 +32,7 @@ const ChartConfig = {
             barSpacing: 6,
             fixLeftEdge: false,
             fixRightEdge: false,
-            lockVisibleTimeRangeOnResize: true,
+            lockVisibleTimeRangeOnResize: false,
             shiftVisibleRangeOnNewBar: false,
             borderColor: '#e0e0e0',
             rightBarStaysOnScroll: true
@@ -73,7 +73,7 @@ const ChartConfig = {
             barSpacing: 6,
             fixLeftEdge: false,
             fixRightEdge: false,
-            lockVisibleTimeRangeOnResize: true,
+            lockVisibleTimeRangeOnResize: false,
             autoFitContent: true
         },
         priceScale: {
@@ -97,7 +97,7 @@ const ChartConfig = {
             barSpacing: 6,
             fixLeftEdge: false,
             fixRightEdge: false,
-            lockVisibleTimeRangeOnResize: true
+            lockVisibleTimeRangeOnResize: false
         },
         priceScale: {
             scaleMargins: { top: 0.65, bottom: 0.2 }, // 成交量占中间15%
@@ -121,7 +121,7 @@ const ChartConfig = {
             barSpacing: 6,
             fixLeftEdge: false,
             fixRightEdge: false,
-            lockVisibleTimeRangeOnResize: true
+            lockVisibleTimeRangeOnResize: false
         },
         priceScale: {
             scaleMargins: { top: 0.8, bottom: 0.0 }, // 指标占底部20%
@@ -502,9 +502,30 @@ class BaseChart extends EventEmitter {
             // 合并用户自定义配置
             const finalConfig = { ...fullConfig, ...this.options };
             
-            console.log(`🎯 创建图表: ${this.id}, 类型: ${chartType}`, finalConfig);
+            console.log(`🎯 创建图表: ${this.id}, 类型: ${chartType}`);
+            console.log(`🔧 [DEBUG] 图表配置:`, finalConfig);
+            console.log(`🔍 [DEBUG] 时间轴配置:`, finalConfig.timeScale);
             
             this.chart = LightweightCharts.createChart(this.container, finalConfig);
+            
+            // 创建后立即检查时间轴配置
+            const createdTimeScaleOptions = this.chart.timeScale().options();
+            console.log(`🔍 [DEBUG] 图表创建后的时间轴配置:`, {
+                fixLeftEdge: createdTimeScaleOptions.fixLeftEdge,
+                fixRightEdge: createdTimeScaleOptions.fixRightEdge,
+                lockVisibleTimeRangeOnResize: createdTimeScaleOptions.lockVisibleTimeRangeOnResize,
+                barSpacing: createdTimeScaleOptions.barSpacing
+            });
+            
+            // 检查图表的交互配置
+            console.log(`🔍 [DEBUG] 图表交互配置:`, {
+                handleScroll: finalConfig.handleScroll,
+                handleScale: finalConfig.handleScale,
+                kineticScrollEnabled: finalConfig.kineticScrollEnabled
+            });
+            
+            // 使用默认交互配置，不强制覆盖
+            console.log('🔧 [DEBUG] 使用LightweightCharts默认交互配置');
             this.setState({ hasError: false, errorMessage: null });
             
             // 设置无留白模式
@@ -532,12 +553,27 @@ class BaseChart extends EventEmitter {
         if (!this.chart) return;
         
         try {
-            this.chart.timeScale().applyOptions({
+            const timeScaleOptions = {
                 rightOffset: 12,
                 barSpacing: 6,
                 fixLeftEdge: false,
-                fixRightEdge: false
+                fixRightEdge: false,
+                lockVisibleTimeRangeOnResize: false
+            };
+            
+            console.log(`🔧 [DEBUG] 应用时间轴配置: ${this.id}`, timeScaleOptions);
+            this.chart.timeScale().applyOptions(timeScaleOptions);
+            
+            // 获取当前时间轴配置进行验证
+            const currentOptions = this.chart.timeScale().options();
+            console.log(`🔍 [DEBUG] 当前时间轴配置: ${this.id}`, {
+                fixLeftEdge: currentOptions.fixLeftEdge,
+                fixRightEdge: currentOptions.fixRightEdge,
+                lockVisibleTimeRangeOnResize: currentOptions.lockVisibleTimeRangeOnResize,
+                barSpacing: currentOptions.barSpacing,
+                rightOffset: currentOptions.rightOffset
             });
+            
             console.log(`📐 无留白模式已设置: ${this.id}`);
         } catch (error) {
             console.warn(`设置无留白模式失败: ${this.id}`, error);
@@ -858,26 +894,43 @@ class MainChart extends BaseChart {
      */
     setupPriceScales() {
         try {
-            // 主价格轴 - K线和价格指标 (占据大部分空间)
-            this.chart.priceScale('right').applyOptions({
-                scaleMargins: { top: 0.05, bottom: 0.25 },  // 主图占顶部75%
+            // 主价格轴配置
+            const rightPriceScaleOptions = {
+                scaleMargins: { top: 0.08, bottom: 0.08 },  // 上下各留8%空间，居中显示
                 alignLabels: true,
                 borderVisible: true,
-                autoScale: true
-            });
+                autoScale: true,
+                mode: 1,  // 使用正常模式，自动调整范围
+                entireTextOnly: false,  // 允许部分文本显示
+                minimumWidth: 60  // 最小宽度
+            };
             
-            // Squeeze指标价格轴 - 底部区域 (底部25%)
-            this.chart.priceScale('squeeze').applyOptions({
-                scaleMargins: { top: 0.75, bottom: 0.0 },   // Squeeze占底部25%
+            console.log('🔧 [DEBUG] 配置主价格轴:', rightPriceScaleOptions);
+            this.chart.priceScale('right').applyOptions(rightPriceScaleOptions);
+            
+            // Squeeze指标价格轴配置
+            const squeezePriceScaleOptions = {
+                scaleMargins: { top: 0.82, bottom: 0.0 },   // Squeeze占底部18%
                 alignLabels: true,
                 borderVisible: true,
                 borderColor: '#B0B0B0',  // 更深的边框颜色
                 autoScale: true,
                 mode: 0
+            };
+            
+            console.log('🔧 [DEBUG] 配置Squeeze价格轴:', squeezePriceScaleOptions);
+            this.chart.priceScale('squeeze').applyOptions(squeezePriceScaleOptions);
+            
+            // 再次检查时间轴配置
+            const timeScaleOptions = this.chart.timeScale().options();
+            console.log('🔍 [DEBUG] 价格轴配置后的时间轴状态:', {
+                fixLeftEdge: timeScaleOptions.fixLeftEdge,
+                fixRightEdge: timeScaleOptions.fixRightEdge,
+                lockVisibleTimeRangeOnResize: timeScaleOptions.lockVisibleTimeRangeOnResize
             });
             
             console.log('✅ 所有价格轴已预先配置完成');
-            console.log('📊 价格轴布局: 主图(5-75%) + Squeeze(75-100%)');
+            console.log('📊 价格轴布局: 主图(8-82%居中) + Squeeze(82-100%)');
         } catch (error) {
             console.error('❌ 价格轴配置失败:', error);
         }
@@ -891,6 +944,12 @@ class MainChart extends BaseChart {
             // 监听时间轴变化
             this.subscribeTimeRangeChange((timeRange) => {
                 this.handleTimeRangeChange(timeRange);
+                // 只在数据加载完成后才优化价格范围，避免干扰用户缩放操作
+                if (this.getState().isDataLoaded && !this._userIsZooming) {
+                    setTimeout(() => {
+                        this.optimizePriceRange();
+                    }, 150);
+                }
             });
             
             // 监听十字线移动
@@ -1555,20 +1614,323 @@ class MainChart extends BaseChart {
     finalizeDataLoad() {
         this.setState({ isLoading: false, isDataLoaded: true });
         
-        // 适配内容到数据范围
-        if (this.chart) {
+        // 适配内容到数据范围（仅在首次加载时）
+        if (this.chart && !this._hasInitialFit) {
             try {
                 this.chart.timeScale().fitContent();
+                this._hasInitialFit = true;
                 console.log('📊 MainChart 数据加载完成，已适配内容');
             } catch (error) {
                 console.warn('适配内容失败:', error);
             }
         }
         
+        // 诊断时间轴配置
+        this.diagnoseTimeScale();
+        
+        // 优化价格范围显示
+        setTimeout(() => {
+            this.optimizePriceRange();
+        }, 200);
+        
         // 初始化价格信息栏
         setTimeout(() => {
             this.updateInfoBarWithLatestData();
         }, 100);
+    }
+    
+    /**
+     * 诊断时间轴配置
+     */
+    diagnoseTimeScale() {
+        if (!this.chart) return;
+        
+        try {
+            const timeScaleOptions = this.chart.timeScale().options();
+            console.log('🔍 [DIAGNOSIS] 时间轴完整配置:', timeScaleOptions);
+            
+            // 检查关键配置项
+            const criticalOptions = {
+                fixLeftEdge: timeScaleOptions.fixLeftEdge,
+                fixRightEdge: timeScaleOptions.fixRightEdge,
+                lockVisibleTimeRangeOnResize: timeScaleOptions.lockVisibleTimeRangeOnResize,
+                barSpacing: timeScaleOptions.barSpacing,
+                rightOffset: timeScaleOptions.rightOffset,
+                visible: timeScaleOptions.visible,
+                minBarSpacing: timeScaleOptions.minBarSpacing
+            };
+            
+            console.log('🔍 [DIAGNOSIS] 关键时间轴配置:', criticalOptions);
+            
+            // 检查是否有配置阻止缩放
+            const blockingZoom = [];
+            if (timeScaleOptions.fixLeftEdge) blockingZoom.push('fixLeftEdge=true');
+            if (timeScaleOptions.fixRightEdge) blockingZoom.push('fixRightEdge=true');
+            if (timeScaleOptions.lockVisibleTimeRangeOnResize) blockingZoom.push('lockVisibleTimeRangeOnResize=true');
+            
+            if (blockingZoom.length > 0) {
+                console.warn('⚠️ [DIAGNOSIS] 发现可能阻止缩放的配置:', blockingZoom);
+                
+                // 尝试强制修复
+                console.log('🔧 [DIAGNOSIS] 尝试强制修复时间轴配置...');
+                this.chart.timeScale().applyOptions({
+                    fixLeftEdge: false,
+                    fixRightEdge: false,
+                    lockVisibleTimeRangeOnResize: false
+                });
+                
+                // 再次检查
+                const fixedOptions = this.chart.timeScale().options();
+                console.log('🔍 [DIAGNOSIS] 修复后的配置:', {
+                    fixLeftEdge: fixedOptions.fixLeftEdge,
+                    fixRightEdge: fixedOptions.fixRightEdge,
+                    lockVisibleTimeRangeOnResize: fixedOptions.lockVisibleTimeRangeOnResize
+                });
+            } else {
+                console.log('✅ [DIAGNOSIS] 时间轴配置正常，应该可以缩放');
+                
+                // 添加鼠标事件监听来调试缩放问题
+                this.addZoomDebugListeners();
+            }
+            
+        } catch (error) {
+            console.error('❌ [DIAGNOSIS] 时间轴诊断失败:', error);
+        }
+    }
+    
+    /**
+     * 添加缩放调试监听器
+     */
+    addZoomDebugListeners() {
+        if (!this.container) return;
+        
+        console.log('🔧 [DEBUG] 添加缩放调试监听器...');
+        
+        // 监听鼠标滚轮事件
+        this.container.addEventListener('wheel', (event) => {
+            console.log('🖱️ [DEBUG] 检测到滚轮事件:', {
+                deltaY: event.deltaY,
+                ctrlKey: event.ctrlKey,
+                shiftKey: event.shiftKey,
+                target: event.target.tagName,
+                defaultPrevented: event.defaultPrevented
+            });
+            
+            // 如果事件被阻止，尝试手动处理缩放
+            if (event.defaultPrevented) {
+                this.handleManualZoom(event);
+                
+                // 只在第一次显示提示
+                if (!this._zoomTipShown) {
+                    console.log('✅ [INFO] 缩放功能已通过手动实现恢复，可以正常使用鼠标滚轮缩放');
+                    this._zoomTipShown = true;
+                }
+            }
+        }, { passive: true });
+        
+        // 监听键盘事件
+        document.addEventListener('keydown', (event) => {
+            if (event.ctrlKey || event.shiftKey) {
+                console.log('⌨️ [DEBUG] 检测到修饰键:', {
+                    key: event.key,
+                    ctrlKey: event.ctrlKey,
+                    shiftKey: event.shiftKey
+                });
+            }
+        });
+        
+        // 尝试手动测试缩放功能
+        setTimeout(() => {
+            this.testZoomFunctionality();
+        }, 1000);
+    }
+    
+    /**
+     * 测试缩放功能
+     */
+    testZoomFunctionality() {
+        if (!this.chart) return;
+        
+        try {
+            console.log('🧪 [TEST] 测试时间轴缩放功能...');
+            
+            // 获取当前可见范围
+            const currentRange = this.chart.timeScale().getVisibleRange();
+            console.log('🔍 [TEST] 当前可见范围:', currentRange);
+            
+            // 尝试程序化缩放
+            if (currentRange) {
+                // 转换时间格式为数字
+                let fromTime, toTime;
+                
+                if (typeof currentRange.from === 'string') {
+                    fromTime = ChartUtils.convertTimeToNumber(currentRange.from);
+                    toTime = ChartUtils.convertTimeToNumber(currentRange.to);
+                } else {
+                    fromTime = currentRange.from;
+                    toTime = currentRange.to;
+                }
+                
+                console.log('🔍 [TEST] 转换后的时间:', { fromTime, toTime });
+                
+                if (!isNaN(fromTime) && !isNaN(toTime)) {
+                    const duration = toTime - fromTime;
+                    const newRange = {
+                        from: fromTime + duration * 0.1,
+                        to: toTime - duration * 0.1
+                    };
+                    
+                    console.log('🔧 [TEST] 尝试程序化缩放到:', newRange);
+                    this.chart.timeScale().setVisibleRange(newRange);
+                    
+                    // 检查是否成功
+                    setTimeout(() => {
+                        const afterRange = this.chart.timeScale().getVisibleRange();
+                        console.log('🔍 [TEST] 缩放后的范围:', afterRange);
+                        
+                        const afterFromTime = typeof afterRange.from === 'string' ? 
+                            ChartUtils.convertTimeToNumber(afterRange.from) : afterRange.from;
+                        const afterToTime = typeof afterRange.to === 'string' ? 
+                            ChartUtils.convertTimeToNumber(afterRange.to) : afterRange.to;
+                        
+                        // 检查时间范围是否发生了变化（不需要精确匹配）
+                        const originalDuration = toTime - fromTime;
+                        const newDuration = afterToTime - afterFromTime;
+                        const durationChanged = Math.abs(newDuration - originalDuration) > originalDuration * 0.05; // 5%的变化
+                        
+                        if (afterRange && durationChanged) {
+                            console.log('✅ [TEST] 程序化缩放成功！时间轴缩放功能正常');
+                            console.log('🔍 [TEST] 原始时长:', originalDuration, '新时长:', newDuration);
+                        } else {
+                            console.log('❌ [TEST] 程序化缩放失败，时间范围没有明显变化');
+                            console.log('🔍 [TEST] 原始时长:', originalDuration, '新时长:', newDuration);
+                        }
+                    }, 100);
+                } else {
+                    console.log('❌ [TEST] 时间转换失败');
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ [TEST] 缩放功能测试失败:', error);
+        }
+    }
+    
+    /**
+     * 手动处理缩放
+     */
+    handleManualZoom(event) {
+        if (!this.chart) return;
+        
+        try {
+            // 标记用户正在缩放，避免价格范围优化干扰
+            this._userIsZooming = true;
+            
+            // 获取当前可见范围
+            const currentRange = this.chart.timeScale().getVisibleRange();
+            if (!currentRange) return;
+            
+            // 转换时间格式
+            let fromTime, toTime;
+            if (typeof currentRange.from === 'string') {
+                fromTime = ChartUtils.convertTimeToNumber(currentRange.from);
+                toTime = ChartUtils.convertTimeToNumber(currentRange.to);
+            } else {
+                fromTime = currentRange.from;
+                toTime = currentRange.to;
+            }
+            
+            if (isNaN(fromTime) || isNaN(toTime)) return;
+            
+            // 计算缩放因子 - 增加缩放幅度让效果更明显
+            const zoomFactor = event.deltaY > 0 ? 1.2 : 0.8; // 向下滚动放大，向上滚动缩小
+            const duration = toTime - fromTime;
+            const center = (fromTime + toTime) / 2;
+            const newDuration = duration * zoomFactor;
+            
+            // 计算新的时间范围
+            const newRange = {
+                from: center - newDuration / 2,
+                to: center + newDuration / 2
+            };
+            
+            // 简化日志输出，只在调试模式下显示详细信息
+            if (window.DEBUG_ZOOM) {
+                console.log('🔧 [MANUAL] 手动缩放:', {
+                    direction: event.deltaY > 0 ? 'zoom out' : 'zoom in',
+                    zoomFactor,
+                    oldRange: { from: fromTime, to: toTime },
+                    newRange
+                });
+            } else {
+                // 简化输出，只显示缩放方向
+                console.log(`🔧 [ZOOM] ${event.deltaY > 0 ? '放大' : '缩小'} (${zoomFactor}x)`);
+            }
+            
+            // 应用新的时间范围
+            this.chart.timeScale().setVisibleRange(newRange);
+            
+            // 延迟清除缩放标记
+            setTimeout(() => {
+                this._userIsZooming = false;
+            }, 500);
+            
+        } catch (error) {
+            console.error('❌ [MANUAL] 手动缩放失败:', error);
+            this._userIsZooming = false;
+        }
+    }
+    
+    /**
+     * 优化价格范围显示，确保价格数据居中，减少下方空白
+     */
+    optimizePriceRange() {
+        try {
+            if (!this.chart || !this.candleSeries[0]) {
+                console.log('⚠️ 没有图表或K线系列，跳过价格范围优化');
+                return;
+            }
+            
+            // 重新配置主价格轴，使价格数据居中显示
+            this.chart.priceScale('right').applyOptions({
+                scaleMargins: { top: 0.08, bottom: 0.08 },  // 上下各留8%空间，居中显示
+                alignLabels: true,
+                borderVisible: true,
+                autoScale: true,
+                mode: 1,  // 正常模式
+                entireTextOnly: false,  // 允许部分文本显示
+                minimumWidth: 60  // 最小宽度
+            });
+            
+            // 调整Squeeze指标的位置，给主图更多空间
+            this.chart.priceScale('squeeze').applyOptions({
+                scaleMargins: { top: 0.82, bottom: 0.0 },   // Squeeze占底部18%
+                alignLabels: true,
+                borderVisible: true,
+                borderColor: '#B0B0B0',
+                autoScale: true,
+                mode: 0
+            });
+            
+            // 强制重新计算价格范围（但不影响时间轴）
+            setTimeout(() => {
+                try {
+                    // 不使用fitContent，避免覆盖用户的缩放操作
+                    // 只重新计算价格轴的自动缩放
+                    if (this.candleSeries[0]) {
+                        // 触发价格轴的自动缩放重新计算
+                        this.chart.priceScale('right').applyOptions({ autoScale: true });
+                        this.chart.priceScale('squeeze').applyOptions({ autoScale: true });
+                    }
+                    console.log('✅ 价格范围已优化，主图(8-82%)，Squeeze(82-100%)');
+                } catch (error) {
+                    console.error('❌ 强制重新计算价格范围失败:', error);
+                }
+            }, 50);
+            
+        } catch (error) {
+            console.error('❌ 优化价格范围失败:', error);
+        }
     }
     
     /**
@@ -1673,4 +2035,4 @@ console.log('📊 可用组件:', {
     EventEmitter: '事件系统',
     ChartRegistry: '图表注册器',
     BaseChart: '基础图表类'
-}); 
+});
