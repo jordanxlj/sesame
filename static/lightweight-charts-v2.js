@@ -1870,7 +1870,7 @@ class MainChart extends BaseChart {
                 if (segment.length > 0) {
                     const uptrendSeries = this.addSeries('line', {
                         priceScaleId: 'right',
-                        color: ChartConfigV2.COLORS.SIGNALS.BUY,
+                        color: stockInfo.colorScheme.upColor, // 使用股票的上涨颜色
                         lineWidth: 3,
                         lastValueVisible: false,
                         priceLineVisible: false,
@@ -1891,7 +1891,7 @@ class MainChart extends BaseChart {
                 if (segment.length > 0) {
                     const downtrendSeries = this.addSeries('line', {
                         priceScaleId: 'right',
-                        color: ChartConfigV2.COLORS.SIGNALS.SELL,
+                        color: stockInfo.colorScheme.downColor, // 使用股票的下跌颜色
                         lineWidth: 3,
                         lastValueVisible: false,
                         priceLineVisible: false,
@@ -1915,7 +1915,7 @@ class MainChart extends BaseChart {
                 const buyMarkers = processedData.buySignals.map(signal => ({
                     time: signal.time,
                     position: 'belowBar',
-                    color: ChartConfigV2.COLORS.SIGNALS.BUY,
+                    color: stockInfo.colorScheme.upColor, // 使用股票的上涨颜色
                     shape: 'arrowUp',
                     text: 'BUY',
                     size: 2
@@ -1928,7 +1928,7 @@ class MainChart extends BaseChart {
                 const sellMarkers = processedData.sellSignals.map(signal => ({
                     time: signal.time,
                     position: 'aboveBar',
-                    color: ChartConfigV2.COLORS.SIGNALS.SELL,
+                    color: stockInfo.colorScheme.downColor, // 使用股票的下跌颜色
                     shape: 'arrowDown',
                     text: 'SELL',
                     size: 2
