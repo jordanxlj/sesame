@@ -188,6 +188,28 @@
             border-radius: 4px;
             font-family: 'Courier New', monospace;
         }
+        
+        /* 多股票相关样式 */
+        .test-info {
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        .test-controls label {
+            display: inline-flex;
+            align-items: center;
+            font-size: 14px;
+            color: #495057;
+        }
+        
+        .test-controls input[type="checkbox"] {
+            margin-right: 5px;
+        }
+        
+        /* 确保图表容器支持绝对定位的子元素 */
+        .test-chart-container {
+            position: relative;
+        }
     </style>
 </head>
 <body>
@@ -245,9 +267,9 @@
         
         <!-- MainChart功能测试 -->
         <div class="test-section">
-            <h3>📈 MainChart功能测试（成交量已移除）</h3>
+            <h3>📈 MainChart功能测试（单股票）</h3>
             <div class="test-content">
-                <div class="test-chart-container" id="mainChartContainer" style="width: 100%; height: 400px; border: 1px solid #ddd; margin: 10px 0;"></div>
+                <div class="test-chart-container" id="mainChartContainer" style="width: 100%; height: 400px; border: 1px solid #ddd; margin: 10px 0; position: relative;"></div>
                 <div class="test-controls">
                     <button onclick="createMainChart()" class="test-btn">创建主图</button>
                     <button onclick="loadMainChartData()" class="test-btn">加载数据</button>
@@ -255,6 +277,37 @@
                     <button onclick="destroyMainChart()" class="test-btn">销毁主图</button>
                 </div>
                 <div class="test-status" id="mainChartStatus">状态: 未创建</div>
+            </div>
+        </div>
+        
+        <!-- 多股票可视化测试 -->
+        <div class="test-section">
+            <h3>📊 多股票可视化功能测试</h3>
+            <div class="test-content">
+                <div class="test-chart-container" id="multiStockChartContainer" style="width: 100%; height: 400px; border: 1px solid #ddd; margin: 10px 0; position: relative;"></div>
+                <div class="test-controls">
+                    <button onclick="createMultiStockChart()" class="test-btn">创建多股票图表</button>
+                    <button onclick="loadMultipleStocks()" class="test-btn">加载多股票数据</button>
+                    <button onclick="clearMultiStockChart()" class="test-btn">清空数据</button>
+                    <button onclick="destroyMultiStockChart()" class="test-btn">销毁图表</button>
+                </div>
+                <div class="test-controls">
+                    <label style="margin-right: 10px;">
+                        <input type="checkbox" id="includeIndicators" checked> 包含技术指标
+                    </label>
+                    <label style="margin-right: 10px;">
+                        <input type="checkbox" id="enableNormalization"> 启用价格归一化
+                    </label>
+                </div>
+                <div class="test-status" id="multiStockStatus">状态: 未创建</div>
+                <div class="test-info" style="margin-top: 10px; padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 12px;">
+                    <strong>多股票功能说明：</strong><br>
+                    • 右上角显示股票图例，点击可切换显示/隐藏<br>
+                    • 支持价格归一化，便于比较不同价格范围的股票<br>
+                    • 鼠标悬停显示多股票对比信息<br>
+                    • 不同股票使用不同颜色区分<br>
+                    • 测试股票：HK.02432, HK.00700, HK.00388
+                </div>
             </div>
         </div>
     </div>
@@ -271,6 +324,7 @@
         let testSeries = null;
         let eventLog = [];
         let testMainChart = null;
+        let testMultiStockChart = null;
         
         // 页面加载完成后执行系统检查
         document.addEventListener('DOMContentLoaded', function() {
@@ -745,7 +799,7 @@
             try {
                 // 测试数据加载
                 const codes = ['HK.02432']; // 测试股票代码（使用实际存在的数据）
-                const indicators = ['ma5', 'ma10', 'supertrend']; // 测试指标
+                const indicators = ['ma5', 'ma10', 'supertrend', 'squeeze_momentum']; // 测试指标
 
                 testMainChart.loadData(codes, indicators)
                     .then(() => {
@@ -762,6 +816,116 @@
             } catch (error) {
                 updateStatus('mainChartStatus', `❌ 加载失败: ${error.message}`);
                 addLog(`MainChart 数据加载失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 多股票图表测试函数
+        function createMultiStockChart() {
+            try {
+                const container = document.getElementById('multiStockChartContainer');
+                if (!container) {
+                    updateStatus('multiStockStatus', '❌ 容器不存在');
+                    return;
+                }
+
+                // 清空容器
+                container.innerHTML = '';
+
+                // 创建多股票主图
+                testMultiStockChart = new MainChart(container);
+                testMultiStockChart.create();
+
+                updateStatus('multiStockStatus', '✅ 多股票图表创建成功');
+                addLog('多股票图表创建成功', 'success');
+
+            } catch (error) {
+                updateStatus('multiStockStatus', `❌ 创建失败: ${error.message}`);
+                addLog(`多股票图表创建失败: ${error.message}`, 'error');
+            }
+        }
+
+        function loadMultipleStocks() {
+            if (!testMultiStockChart) {
+                updateStatus('multiStockStatus', '❌ 请先创建多股票图表');
+                return;
+            }
+
+            try {
+                // 获取指标选择
+                const includeIndicators = document.getElementById('includeIndicators').checked;
+                const indicators = includeIndicators ? ['ma5', 'ma10', 'supertrend'] : []; // 多股票时不包含squeeze_momentum
+                
+                // 多股票测试数据
+                const codes = ['HK.02432', 'HK.09660']; // 测试多个股票代码
+                
+                updateStatus('multiStockStatus', '⏳ 正在加载多股票数据...');
+                addLog('开始加载多股票数据', 'info');
+
+                testMultiStockChart.loadData(codes, indicators)
+                    .then(() => {
+                        updateStatus('multiStockStatus', '✅ 多股票数据加载成功');
+                        addLog('多股票数据加载成功', 'success');
+                        addLog('右上角显示股票图例，可点击切换显示/隐藏', 'info');
+                        
+                        // 检查归一化选项
+                        const enableNormalization = document.getElementById('enableNormalization').checked;
+                        if (enableNormalization && testMultiStockChart.toggleNormalization) {
+                            setTimeout(() => {
+                                testMultiStockChart.toggleNormalization();
+                                addLog('已启用价格归一化，便于比较不同价格范围的股票', 'info');
+                            }, 500);
+                        }
+                    })
+                    .catch(error => {
+                        updateStatus('multiStockStatus', `❌ 多股票数据加载失败: ${error.message}`);
+                        addLog(`多股票数据加载失败: ${error.message}`, 'error');
+                    });
+
+            } catch (error) {
+                updateStatus('multiStockStatus', `❌ 加载失败: ${error.message}`);
+                addLog(`多股票数据加载失败: ${error.message}`, 'error');
+            }
+        }
+
+        function clearMultiStockChart() {
+            if (!testMultiStockChart) {
+                updateStatus('multiStockStatus', '❌ 请先创建多股票图表');
+                return;
+            }
+
+            try {
+                testMultiStockChart.clearData();
+                updateStatus('multiStockStatus', '✅ 多股票数据已清空');
+                addLog('多股票数据已清空', 'success');
+
+            } catch (error) {
+                updateStatus('multiStockStatus', `❌ 清空失败: ${error.message}`);
+                addLog(`多股票数据清空失败: ${error.message}`, 'error');
+            }
+        }
+
+        function destroyMultiStockChart() {
+            if (!testMultiStockChart) {
+                updateStatus('multiStockStatus', '❌ 多股票图表不存在');
+                return;
+            }
+
+            try {
+                testMultiStockChart.destroy();
+                testMultiStockChart = null;
+                
+                // 清空容器
+                const container = document.getElementById('multiStockChartContainer');
+                if (container) {
+                    container.innerHTML = '';
+                }
+
+                updateStatus('multiStockStatus', '✅ 多股票图表已销毁');
+                addLog('多股票图表已销毁', 'success');
+
+            } catch (error) {
+                updateStatus('multiStockStatus', `❌ 销毁失败: ${error.message}`);
+                addLog(`多股票图表销毁失败: ${error.message}`, 'error');
             }
         }
 
