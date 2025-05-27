@@ -1705,45 +1705,79 @@ class MainChart extends BaseChart {
             const stockInfo = this.stockInfos[stockIndex];
             if (!stockInfo) return;
             
-            // 处理SuperTrend数据
-            const processedData = this.processSupertrendData(data);
+            // 处理SuperTrend数据，获取分段数据和信号点
+            const processedData = this.processSupertrendDataAdvanced(data);
             
-            // 创建上升趋势线
-            const uptrendSeries = this.addSeries('line', {
-                priceScaleId: 'right',
-                color: stockInfo.colorScheme.upColor,
-                lineWidth: 2,
-                title: `${stockInfo.code} SuperTrend Up`
+            // 创建多段上升趋势线
+            processedData.uptrendSegments.forEach((segment, index) => {
+                if (segment.length > 0) {
+                    const uptrendSeries = this.addSeries('line', {
+                        priceScaleId: 'right',
+                        color: ChartConfigV2.COLORS.SIGNALS.BUY,
+                        lineWidth: 3,
+                        lastValueVisible: false,
+                        priceLineVisible: false,
+                        visible: true
+                    });
+                    uptrendSeries.setData(segment);
+                }
             });
             
-            // 创建下降趋势线
-            const downtrendSeries = this.addSeries('line', {
-                priceScaleId: 'right',
-                color: stockInfo.colorScheme.downColor,
-                lineWidth: 2,
-                title: `${stockInfo.code} SuperTrend Down`
+            // 创建多段下降趋势线
+            processedData.downtrendSegments.forEach((segment, index) => {
+                if (segment.length > 0) {
+                    const downtrendSeries = this.addSeries('line', {
+                        priceScaleId: 'right',
+                        color: ChartConfigV2.COLORS.SIGNALS.SELL,
+                        lineWidth: 3,
+                        lastValueVisible: false,
+                        priceLineVisible: false,
+                        visible: true
+                    });
+                    downtrendSeries.setData(segment);
+                }
             });
             
-            // 过滤掉所有null值的数据点，只保留有效数据
-            const validUptrend = processedData.uptrend.filter(item => item.value !== null && item.value > 0);
-            const validDowntrend = processedData.downtrend.filter(item => item.value !== null && item.value > 0);
+            // 合并买入和卖出信号标记
+            const allMarkers = [];
             
-            // 设置数据
-            if (validUptrend.length > 0) {
-                uptrendSeries.setData(validUptrend);
-                console.log(`✅ SuperTrend上升趋势数据已设置: ${validUptrend.length}点`);
-            } else {
-                console.log(`⚠️ SuperTrend上升趋势无有效数据`);
+            // 添加买入信号标记
+            if (processedData.buySignals.length > 0) {
+                const buyMarkers = processedData.buySignals.map(signal => ({
+                    time: signal.time,
+                    position: 'belowBar',
+                    color: ChartConfigV2.COLORS.SIGNALS.BUY,
+                    shape: 'arrowUp',
+                    text: 'BUY',
+                    size: 2
+                }));
+                allMarkers.push(...buyMarkers);
             }
             
-            if (validDowntrend.length > 0) {
-                downtrendSeries.setData(validDowntrend);
-                console.log(`✅ SuperTrend下降趋势数据已设置: ${validDowntrend.length}点`);
-            } else {
-                console.log(`⚠️ SuperTrend下降趋势无有效数据`);
+            // 添加卖出信号标记
+            if (processedData.sellSignals.length > 0) {
+                const sellMarkers = processedData.sellSignals.map(signal => ({
+                    time: signal.time,
+                    position: 'aboveBar',
+                    color: ChartConfigV2.COLORS.SIGNALS.SELL,
+                    shape: 'arrowDown',
+                    text: 'SELL',
+                    size: 2
+                }));
+                allMarkers.push(...sellMarkers);
             }
             
-            console.log(`✅ SuperTrend指标已添加 (股票${stockIndex})`);
+            // 按时间排序并设置标记
+            if (allMarkers.length > 0 && this.candleSeries[stockIndex]) {
+                allMarkers.sort((a, b) => {
+                    const timeA = typeof a.time === 'string' ? new Date(a.time).getTime() : a.time * 1000;
+                    const timeB = typeof b.time === 'string' ? new Date(b.time).getTime() : b.time * 1000;
+                    return timeA - timeB;
+                });
+                this.candleSeries[stockIndex].setMarkers(allMarkers);
+            }
+            
+            console.log(`✅ SuperTrend指标已添加 (股票${stockIndex}): ${processedData.uptrendSegments.length}个上升段, ${processedData.downtrendSegments.length}个下降段, ${processedData.buySignals.length}个买入信号, ${processedData.sellSignals.length}个卖出信号`);
             
         } catch (error) {
             console.error(`❌ 添加SuperTrend指标失败 (股票${stockIndex}):`, error);
@@ -1751,7 +1785,86 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 处理SuperTrend数据
+     * 高级处理SuperTrend数据，生成分段线条和信号点
+     */
+    processSupertrendDataAdvanced(data) {
+        const uptrendSegments = [];
+        const downtrendSegments = [];
+        const buySignals = [];
+        const sellSignals = [];
+        
+        let currentUptrendSegment = [];
+        let currentDowntrendSegment = [];
+        let lastDirection = null;
+        
+        console.log('🔍 SuperTrend高级处理数据样本:', data.slice(0, 3));
+        
+        data.forEach((item, index) => {
+            if (!item || !item.time) return;
+            
+            // 兼容不同的字段名：trend 或 supertrend_direction
+            const direction = item.trend || item.supertrend_direction;
+            const value = item.supertrend;
+            
+            // 跳过无效数据
+            if (!isFinite(value) || value <= 0) return;
+            
+            const dataPoint = { time: item.time, value: value };
+            
+            // 使用API提供的买卖信号
+            if (item.buy === 1) {
+                buySignals.push({ time: item.time, value: value });
+            }
+            if (item.sell === 1) {
+                sellSignals.push({ time: item.time, value: value });
+            }
+            
+            // 处理趋势段
+            if (direction === 1) {
+                // 上升趋势
+                if (lastDirection === -1) {
+                    // 从下降趋势转为上升趋势，结束下降段
+                    if (currentDowntrendSegment.length > 0) {
+                        downtrendSegments.push([...currentDowntrendSegment]);
+                        currentDowntrendSegment = [];
+                    }
+                }
+                currentUptrendSegment.push(dataPoint);
+            } else if (direction === -1) {
+                // 下降趋势
+                if (lastDirection === 1) {
+                    // 从上升趋势转为下降趋势，结束上升段
+                    if (currentUptrendSegment.length > 0) {
+                        uptrendSegments.push([...currentUptrendSegment]);
+                        currentUptrendSegment = [];
+                    }
+                }
+                currentDowntrendSegment.push(dataPoint);
+            }
+            
+            lastDirection = direction;
+        });
+        
+        // 添加最后的段
+        if (currentUptrendSegment.length > 0) {
+            uptrendSegments.push(currentUptrendSegment);
+        }
+        if (currentDowntrendSegment.length > 0) {
+            downtrendSegments.push(currentDowntrendSegment);
+        }
+        
+        console.log(`📊 SuperTrend高级处理结果: ${uptrendSegments.length}个上升段, ${downtrendSegments.length}个下降段, ${buySignals.length}个买入信号, ${sellSignals.length}个卖出信号`);
+        
+        return {
+            uptrendSegments,
+            downtrendSegments,
+            buySignals,
+            sellSignals
+        };
+    }
+    
+    /**
+     * 处理SuperTrend数据（保留原方法作为备用）
      */
     processSupertrendData(data) {
         const uptrend = [];
@@ -1806,7 +1919,8 @@ class MainChart extends BaseChart {
                 priceScaleId: 'right',
                 color: indicator === 'ma5' ? '#ff6b6b' : '#4ecdc4',
                 lineWidth: 1,
-                title: `${stockInfo.code} ${indicator.toUpperCase()}`
+                lastValueVisible: false,
+                priceLineVisible: false
             });
             
             maSeries.setData(maData);

@@ -277,6 +277,14 @@
                     <button onclick="destroyMainChart()" class="test-btn">销毁主图</button>
                 </div>
                 <div class="test-status" id="mainChartStatus">状态: 未创建</div>
+                <div class="test-info" style="margin-top: 10px; padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 12px;">
+                    <strong>SuperTrend功能说明：</strong><br>
+                    • 多段式显示：上升趋势显示绿色线段，下降趋势显示红色线段<br>
+                    • 信号标记：趋势转换时显示箭头和BUY/SELL文字<br>
+                    • 买入信号：绿色向上箭头，显示在K线下方<br>
+                    • 卖出信号：红色向下箭头，显示在K线上方<br>
+                    • 测试股票：HK.09660（包含多个买卖信号）
+                </div>
             </div>
         </div>
         
@@ -301,12 +309,13 @@
                 </div>
                 <div class="test-status" id="multiStockStatus">状态: 未创建</div>
                 <div class="test-info" style="margin-top: 10px; padding: 10px; background: #e9ecef; border-radius: 4px; font-size: 12px;">
-                    <strong>多股票功能说明：</strong><br>
+                    <strong>多股票SuperTrend功能说明：</strong><br>
                     • 右上角显示股票图例，点击可切换显示/隐藏<br>
                     • 支持价格归一化，便于比较不同价格范围的股票<br>
+                    • 每只股票的SuperTrend使用独立的颜色方案<br>
+                    • 买卖信号标记在各自股票的K线上<br>
                     • 鼠标悬停显示多股票对比信息<br>
-                    • 不同股票使用不同颜色区分<br>
-                    • 测试股票：HK.02432, HK.00700, HK.00388
+                    • 测试股票：HK.02432, HK.09660（包含不同的趋势模式）
                 </div>
             </div>
         </div>
@@ -798,8 +807,8 @@
 
             try {
                 // 测试数据加载
-                const codes = ['HK.02432']; // 测试股票代码（使用实际存在的数据）
-                const indicators = ['ma5', 'ma10', 'supertrend', 'squeeze_momentum']; // 测试指标
+                const codes = ['HK.09660']; // 测试股票代码（使用实际存在的数据）
+                const indicators = ['supertrend']; // 重点测试SuperTrend指标
 
                 testMainChart.loadData(codes, indicators)
                     .then(() => {
@@ -853,7 +862,7 @@
             try {
                 // 获取指标选择
                 const includeIndicators = document.getElementById('includeIndicators').checked;
-                const indicators = includeIndicators ? ['ma5', 'ma10', 'supertrend'] : []; // 多股票时不包含squeeze_momentum
+                const indicators = includeIndicators ? ['supertrend'] : []; // 重点测试SuperTrend指标
                 
                 // 多股票测试数据
                 const codes = ['HK.02432', 'HK.09660']; // 测试多个股票代码
