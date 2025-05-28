@@ -855,6 +855,67 @@ class BaseChart extends EventEmitter {
             hasChart: !!this.chart
         };
     }
+    
+    /**
+     * 禁用独立交互功能（用于子图）
+     * 主图不应该调用此方法
+     */
+    disableIndependentInteractions() {
+        try {
+            if (this.container) {
+                // 添加全面的事件阻止
+                const blockAllEvents = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                };
+                
+                // 阻止所有可能触发缩放的事件
+                this.container.addEventListener('wheel', blockAllEvents, { passive: false, capture: true });
+                this.container.addEventListener('mousedown', blockAllEvents, { passive: false, capture: true });
+                this.container.addEventListener('keydown', blockAllEvents, { passive: false, capture: true });
+                this.container.addEventListener('touchstart', blockAllEvents, { passive: false, capture: true });
+                this.container.addEventListener('touchmove', blockAllEvents, { passive: false, capture: true });
+                
+                // 禁用拖拽和选择
+                this.container.addEventListener('mousemove', (e) => {
+                    if (e.buttons > 0) { // 如果有按钮被按下
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    }
+                }, { passive: false, capture: true });
+                
+                // 设置样式禁用选择和拖拽
+                this.container.style.userSelect = 'none';
+                this.container.style.pointerEvents = 'none';
+                this.container.style.webkitUserSelect = 'none';
+                this.container.style.mozUserSelect = 'none';
+                this.container.style.msUserSelect = 'none';
+                
+                // 重新启用仅查看功能（十字线）
+                setTimeout(() => {
+                    if (this.container) {
+                        this.container.style.pointerEvents = 'auto';
+                        
+                        // 只允许鼠标移动事件（用于十字线），禁用其他所有交互
+                        this.container.addEventListener('mousemove', (e) => {
+                            if (e.buttons === 0) { // 只有在没有按钮被按下时才允许
+                                return true;
+                            }
+                            e.preventDefault();
+                            e.stopPropagation();
+                            return false;
+                        }, { passive: false });
+                    }
+                }, 100);
+                
+                console.log(`✅ ${this.getSourceName()}子图独立交互已完全禁用`);
+            }
+        } catch (error) {
+            console.error(`❌ 禁用${this.getSourceName()}子图独立交互失败:`, error);
+        }
+    }
 }
 
 // ================================
@@ -3238,86 +3299,6 @@ class VolumeChart extends BaseChart {
     }
     
     /**
-     * 禁用独立交互功能
-     */
-    disableIndependentInteractions() {
-        try {
-            if (this.container) {
-                // 禁用所有鼠标滚轮事件
-                this.container.addEventListener('wheel', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }, { passive: false, capture: true });
-                
-                // 禁用所有鼠标按下事件
-                this.container.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }, { passive: false, capture: true });
-                
-                // 禁用所有鼠标移动事件（当按下时）
-                this.container.addEventListener('mousemove', (e) => {
-                    if (e.buttons > 0) { // 如果有按钮被按下
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return false;
-                    }
-                }, { passive: false, capture: true });
-                
-                // 禁用所有键盘事件
-                this.container.addEventListener('keydown', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }, { passive: false, capture: true });
-                
-                // 禁用触摸事件
-                this.container.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }, { passive: false, capture: true });
-                
-                this.container.addEventListener('touchmove', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }, { passive: false, capture: true });
-                
-                // 设置容器样式禁用选择和拖拽
-                this.container.style.userSelect = 'none';
-                this.container.style.pointerEvents = 'none';
-                this.container.style.webkitUserSelect = 'none';
-                this.container.style.mozUserSelect = 'none';
-                this.container.style.msUserSelect = 'none';
-                
-                // 重新启用仅查看功能（十字线）
-                setTimeout(() => {
-                    if (this.container) {
-                        this.container.style.pointerEvents = 'auto';
-                        
-                        // 只允许鼠标移动事件（用于十字线），禁用其他所有交互
-                        this.container.addEventListener('mousemove', (e) => {
-                            if (e.buttons === 0) { // 只有在没有按钮被按下时才允许
-                                return true;
-                            }
-                            e.preventDefault();
-                            e.stopPropagation();
-                            return false;
-                        }, { passive: false });
-                    }
-                }, 100);
-                
-                console.log('✅ 成交量子图独立交互已完全禁用');
-            }
-        } catch (error) {
-            console.error('❌ 禁用成交量子图独立交互失败:', error);
-        }
-    }
-    
-    /**
      * 设置成交量价格轴
      */
     setupVolumeScale() {
@@ -3521,60 +3502,9 @@ class SqueezeChart extends BaseChart {
         // 禁用子图的独立缩放和滚动
         this.disableIndependentInteractions();
         
-        // 额外的全面交互禁用（增强版）
-        if (this.container) {
-            // 添加更全面的事件阻止
-            const blockAllEvents = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            };
-            
-            // 阻止所有可能触发缩放的事件
-            this.container.addEventListener('wheel', blockAllEvents, { passive: false, capture: true });
-            this.container.addEventListener('mousedown', blockAllEvents, { passive: false, capture: true });
-            this.container.addEventListener('keydown', blockAllEvents, { passive: false, capture: true });
-            this.container.addEventListener('touchstart', blockAllEvents, { passive: false, capture: true });
-            this.container.addEventListener('touchmove', blockAllEvents, { passive: false, capture: true });
-            
-            // 设置样式禁用
-            this.container.style.userSelect = 'none';
-            this.container.style.webkitUserSelect = 'none';
-            this.container.style.mozUserSelect = 'none';
-            this.container.style.msUserSelect = 'none';
-            
-            console.log('✅ SqueezeChart 额外交互禁用已应用');
-        }
-        
         console.log('✅ SqueezeChart 初始化完成');
     }
-    
-    /**
-     * 禁用独立交互功能
-     */
-    disableIndependentInteractions() {
-        try {
-            // 禁用容器的鼠标滚轮事件
-            if (this.container) {
-                this.container.addEventListener('wheel', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }, { passive: false });
-                
-                // 禁用鼠标拖拽事件
-                this.container.addEventListener('mousedown', (e) => {
-                    if (e.shiftKey || e.ctrlKey) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }
-                }, { passive: false });
-                
-                console.log('✅ Squeeze子图独立交互已禁用');
-            }
-        } catch (error) {
-            console.error('❌ 禁用Squeeze子图独立交互失败:', error);
-        }
-    }
+
     
     /**
      * 设置Squeeze价格轴
