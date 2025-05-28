@@ -1106,9 +1106,9 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 切换价格归一化
+     * 手动切换价格归一化（强制模式，忽略智能检查）
      */
-    toggleNormalization() {
+    manualToggleNormalization() {
         this.normalizationEnabled = !this.normalizationEnabled;
         
         if (this.normalizationEnabled) {
@@ -1118,7 +1118,14 @@ class MainChart extends BaseChart {
         }
         
         this.updateInfoBarWithLatestData();
-        console.log(`📊 价格归一化已${this.normalizationEnabled ? '启用' : '禁用'}`);
+        console.log(`📊 手动归一化：已${this.normalizationEnabled ? '启用' : '禁用'}`);
+    }
+    
+    /**
+     * 切换价格归一化（保持向后兼容）
+     */
+    toggleNormalization() {
+        return this.smartToggleNormalization();
     }
     
     /**
@@ -1592,13 +1599,21 @@ class MainChart extends BaseChart {
         const firstStockData = allStockData[0];
         let html = this.renderStockListWithPrices(firstStockData, timeStr);
         
-        // 添加价格归一化控制
+        // 添加价格归一化控制 - 智能版本
+        const shouldNormalize = this.shouldEnableNormalization();
+        const isDisabled = !shouldNormalize;
+        const disabledStyle = isDisabled ? 'opacity: 0.5; cursor: not-allowed;' : 'cursor: pointer;';
+        const tooltipText = isDisabled ? '价格差异小于30%，无需归一化' : '切换价格归一化显示';
+        
         html += `
             <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #eee;">
-                <label style="display: flex; align-items: center; cursor: pointer; font-size: 10px;">
+                <label style="display: flex; align-items: center; ${disabledStyle} font-size: 10px;" title="${tooltipText}">
                     <input type="checkbox" ${this.normalizationEnabled ? 'checked' : ''} 
+                           ${isDisabled ? 'disabled' : ''}
                            onchange="window.toggleNormalization()" style="margin-right: 4px; transform: scale(0.8);">
-                    <span style="color: #666;">价格归一化</span>
+                    <span style="color: ${isDisabled ? '#999' : '#666'};">
+                        价格归一化 ${isDisabled ? '(无需归一化)' : ''}
+                    </span>
                 </label>
             </div>
         `;
@@ -2234,6 +2249,15 @@ class MainChart extends BaseChart {
     finalizeDataLoad() {
         this.setState({ isLoading: false, isDataLoaded: true });
         
+        // 智能检查是否需要归一化
+        const shouldNormalize = this.shouldEnableNormalization();
+        if (!shouldNormalize && this.normalizationEnabled) {
+            // 如果当前启用了归一化但实际不需要，自动禁用
+            this.normalizationEnabled = false;
+            this.disableNormalization();
+            console.log(`📊 数据加载完成：自动禁用归一化（价格差异小于30%）`);
+        }
+        
         // 适配内容到数据范围（仅在首次加载时）
         if (this.chart && !this._hasInitialFit) {
             try {
@@ -2685,13 +2709,21 @@ class MainChart extends BaseChart {
         // 渲染股票列表和价格信息在同一行
         let html = this.renderStockListWithPrices(ohlcData, timeStr);
         
-        // 添加价格归一化控制
+        // 添加价格归一化控制 - 智能版本
+        const shouldNormalize = this.shouldEnableNormalization();
+        const isDisabled = !shouldNormalize;
+        const disabledStyle = isDisabled ? 'opacity: 0.5; cursor: not-allowed;' : 'cursor: pointer;';
+        const tooltipText = isDisabled ? '价格差异小于30%，无需归一化' : '切换价格归一化显示';
+        
         html += `
             <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #eee;">
-                <label style="display: flex; align-items: center; cursor: pointer; font-size: 10px;">
+                <label style="display: flex; align-items: center; ${disabledStyle} font-size: 10px;" title="${tooltipText}">
                     <input type="checkbox" ${this.normalizationEnabled ? 'checked' : ''} 
+                           ${isDisabled ? 'disabled' : ''}
                            onchange="window.toggleNormalization()" style="margin-right: 4px; transform: scale(0.8);">
-                    <span style="color: #666;">价格归一化</span>
+                    <span style="color: ${isDisabled ? '#999' : '#666'};">
+                        价格归一化 ${isDisabled ? '(无需归一化)' : ''}
+                    </span>
                 </label>
             </div>
         `;
@@ -2786,6 +2818,104 @@ class MainChart extends BaseChart {
         console.log(`❌ [DEBUG] 所有匹配方法都失败`);
         return null;
     }
+    
+    /**
+     * 检查是否需要价格归一化
+     * 只检查可见股票与主股票的价格相差是否小于30%
+     */
+    shouldEnableNormalization() {
+        if (this.stockInfos.length <= 1) {
+            return false; // 单股票不需要归一化
+        }
+        
+        // 找到第一个可见的股票作为主股票
+        let mainStock = null;
+        let mainStockIndex = -1;
+        for (let i = 0; i < this.stockInfos.length; i++) {
+            if (this.stockVisibility[i] !== false && this.stockInfos[i] && this.stockInfos[i].data && this.stockInfos[i].data.length > 0) {
+                mainStock = this.stockInfos[i];
+                mainStockIndex = i;
+                break;
+            }
+        }
+        
+        if (!mainStock) {
+            return false; // 没有可见股票
+        }
+        
+        // 获取主股票的最新价格作为参考
+        const mainPrice = mainStock.data[mainStock.data.length - 1].close;
+        
+        console.log(`📊 [归一化检查] 主股票 ${mainStock.code} 参考价格: ${mainPrice} (可见股票)`);
+        
+        // 检查其他可见股票与主股票的价格差异
+        let visibleStockCount = 0;
+        for (let i = 0; i < this.stockInfos.length; i++) {
+            // 跳过隐藏的股票和主股票本身
+            if (i === mainStockIndex || this.stockVisibility[i] === false) {
+                if (this.stockVisibility[i] === false) {
+                    console.log(`⚪ [归一化检查] 跳过隐藏股票 ${this.stockInfos[i]?.code}`);
+                }
+                continue;
+            }
+            
+            const stock = this.stockInfos[i];
+            if (!stock || !stock.data || stock.data.length === 0) {
+                continue;
+            }
+            
+            visibleStockCount++;
+            const stockPrice = stock.data[stock.data.length - 1].close;
+            const priceDiff = Math.abs(stockPrice - mainPrice) / mainPrice;
+            
+            console.log(`📊 [归一化检查] 可见股票 ${stock.code} 价格: ${stockPrice}, 与主股票差异: ${(priceDiff * 100).toFixed(2)}%`);
+            
+            // 如果任何一只可见股票与主股票价格相差超过30%，则需要归一化
+            if (priceDiff > 0.3) {
+                console.log(`✅ [归一化检查] 需要归一化：${stock.code} 与主股票价格差异超过30%`);
+                return true;
+            }
+        }
+        
+        if (visibleStockCount === 0) {
+            console.log(`⚪ [归一化检查] 只有一只可见股票，不需要归一化`);
+            return false;
+        }
+        
+        console.log(`⚪ [归一化检查] 不需要归一化：所有可见股票价格差异都小于30%`);
+        return false;
+    }
+    
+    /**
+     * 智能切换价格归一化
+     */
+    smartToggleNormalization() {
+        // 检查是否需要归一化
+        const shouldNormalize = this.shouldEnableNormalization();
+        
+        if (!shouldNormalize) {
+            // 如果不需要归一化，强制禁用
+            if (this.normalizationEnabled) {
+                this.normalizationEnabled = false;
+                this.disableNormalization();
+                console.log(`📊 智能归一化：已自动禁用（价格差异小于30%）`);
+            }
+            return false; // 返回false表示不允许手动启用
+        }
+        
+        // 如果需要归一化，允许手动切换
+        this.normalizationEnabled = !this.normalizationEnabled;
+        
+        if (this.normalizationEnabled) {
+            this.enableNormalization();
+        } else {
+            this.disableNormalization();
+        }
+        
+        this.updateInfoBarWithLatestData();
+        console.log(`📊 智能归一化：已${this.normalizationEnabled ? '启用' : '禁用'}`);
+        return true; // 返回true表示成功切换
+    }
 }
 
 // ================================
@@ -2815,8 +2945,17 @@ window.toggleStock = function(index) {
 
 window.toggleNormalization = function() {
     const mainChart = ChartRegistry.getMainChart();
-    if (mainChart && mainChart.toggleNormalization) {
-        mainChart.toggleNormalization();
+    if (mainChart && mainChart.smartToggleNormalization) {
+        const success = mainChart.smartToggleNormalization();
+        if (!success) {
+            // 如果无法切换归一化，显示提示
+            console.log('💡 提示：当前股票价格差异小于30%，无需使用归一化功能');
+            
+            // 可以在这里添加用户界面提示，比如弹出消息
+            if (typeof window.showToast === 'function') {
+                window.showToast('股票价格差异小于30%，无需归一化', 'info');
+            }
+        }
     }
 };
 
