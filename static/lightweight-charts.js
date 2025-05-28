@@ -20,7 +20,7 @@ const ChartConfig = {
             alignLabels: true,
             borderColor: '#e0e0e0',
             textColor: '#333333',
-            minimumWidth: 80
+            minimumWidth: 80  // 统一最小宽度，确保对齐
         },
         leftPriceScale: { visible: false },
         timeScale: { 
@@ -914,7 +914,7 @@ class MainChart extends BaseChart {
                 autoScale: true,
                 mode: 1,  // 使用正常模式，自动调整范围
                 entireTextOnly: false,  // 允许部分文本显示
-                minimumWidth: 60  // 最小宽度
+                minimumWidth: 80  // 统一最小宽度
             };
             
             console.log('🔧 [DEBUG] 配置主价格轴:', rightPriceScaleOptions);
@@ -927,7 +927,8 @@ class MainChart extends BaseChart {
                 borderVisible: true,
                 borderColor: '#B0B0B0',  // 更深的边框颜色
                 autoScale: true,
-                mode: 0
+                mode: 0,
+                minimumWidth: 80  // 统一最小宽度
             };
             
             console.log('🔧 [DEBUG] 配置Squeeze价格轴:', squeezePriceScaleOptions);
@@ -2957,21 +2958,25 @@ class MainChart extends BaseChart {
             this.volumeContainer.style.cssText = `
                 width: 100%;
                 height: 150px;
-                margin-top: 10px;
+                margin-top: 2px;
                 border: 1px solid #ddd;
                 border-radius: 4px;
                 background: white;
+                box-sizing: border-box;
             `;
             
             // 添加标题
             const titleDiv = document.createElement('div');
             titleDiv.style.cssText = `
-                padding: 5px 10px;
+                padding: 3px 10px;
                 background: #f8f9fa;
                 border-bottom: 1px solid #ddd;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: bold;
                 color: #666;
+                height: 20px;
+                line-height: 14px;
+                box-sizing: border-box;
             `;
             titleDiv.textContent = '成交量';
             this.volumeContainer.appendChild(titleDiv);
@@ -2980,7 +2985,8 @@ class MainChart extends BaseChart {
             const chartDiv = document.createElement('div');
             chartDiv.style.cssText = `
                 width: 100%;
-                height: 120px;
+                height: 128px;
+                box-sizing: border-box;
             `;
             this.volumeContainer.appendChild(chartDiv);
             
@@ -3078,21 +3084,25 @@ class MainChart extends BaseChart {
             this.squeezeContainer.style.cssText = `
                 width: 100%;
                 height: 150px;
-                margin-top: 10px;
+                margin-top: 2px;
                 border: 1px solid #ddd;
                 border-radius: 4px;
                 background: white;
+                box-sizing: border-box;
             `;
             
             // 添加标题
             const titleDiv = document.createElement('div');
             titleDiv.style.cssText = `
-                padding: 5px 10px;
+                padding: 3px 10px;
                 background: #f8f9fa;
                 border-bottom: 1px solid #ddd;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: bold;
                 color: #666;
+                height: 20px;
+                line-height: 14px;
+                box-sizing: border-box;
             `;
             titleDiv.textContent = 'Squeeze Momentum';
             this.squeezeContainer.appendChild(titleDiv);
@@ -3101,7 +3111,8 @@ class MainChart extends BaseChart {
             const chartDiv = document.createElement('div');
             chartDiv.style.cssText = `
                 width: 100%;
-                height: 120px;
+                height: 128px;
+                box-sizing: border-box;
             `;
             this.squeezeContainer.appendChild(chartDiv);
             
@@ -3218,11 +3229,13 @@ class VolumeChart extends BaseChart {
     setupVolumeScale() {
         try {
             const volumePriceScaleOptions = {
-                scaleMargins: { top: 0.1, bottom: 0.1 },
+                scaleMargins: { top: 0.05, bottom: 0.05 },
                 alignLabels: true,
                 borderVisible: true,
                 autoScale: true,
                 mode: 0, // 正常模式
+                minimumWidth: 80, // 与主图保持一致的最小宽度
+                entireTextOnly: false,
                 priceFormat: {
                     type: 'volume'
                 }
@@ -3230,6 +3243,15 @@ class VolumeChart extends BaseChart {
             
             console.log('🔧 [DEBUG] 配置成交量价格轴:', volumePriceScaleOptions);
             this.chart.priceScale('right').applyOptions(volumePriceScaleOptions);
+            
+            // 确保时间轴配置与主图一致
+            this.chart.timeScale().applyOptions({
+                rightOffset: 12,
+                barSpacing: 6,
+                fixLeftEdge: false,
+                fixRightEdge: false,
+                lockVisibleTimeRangeOnResize: false
+            });
             
             console.log('✅ 成交量价格轴已配置完成');
         } catch (error) {
@@ -3411,11 +3433,13 @@ class SqueezeChart extends BaseChart {
     setupSqueezeScale() {
         try {
             const squeezePriceScaleOptions = {
-                scaleMargins: { top: 0.1, bottom: 0.1 },
+                scaleMargins: { top: 0.05, bottom: 0.05 },
                 alignLabels: true,
                 borderVisible: true,
                 autoScale: true,
                 mode: 0, // 正常模式
+                minimumWidth: 80, // 与主图保持一致的最小宽度
+                entireTextOnly: false,
                 priceFormat: {
                     type: 'price',
                     precision: 4,
@@ -3425,6 +3449,15 @@ class SqueezeChart extends BaseChart {
             
             console.log('🔧 [DEBUG] 配置Squeeze价格轴:', squeezePriceScaleOptions);
             this.chart.priceScale('right').applyOptions(squeezePriceScaleOptions);
+            
+            // 确保时间轴配置与主图一致
+            this.chart.timeScale().applyOptions({
+                rightOffset: 12,
+                barSpacing: 6,
+                fixLeftEdge: false,
+                fixRightEdge: false,
+                lockVisibleTimeRangeOnResize: false
+            });
             
             console.log('✅ Squeeze价格轴已配置完成');
         } catch (error) {
