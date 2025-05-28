@@ -872,6 +872,10 @@ class MainChart extends BaseChart {
         this.volumeChart = null;
         this.volumeContainer = null;
         
+        // Squeeze子图相关
+        this.squeezeChart = null;
+        this.squeezeContainer = null;
+        
         // 注册为主图
         ChartRegistry.register(this.id, this, true);
         
@@ -984,6 +988,9 @@ class MainChart extends BaseChart {
         
         // 同步时间轴到成交量子图
         this.syncTimeRangeToVolumeChart(timeRange);
+        
+        // 同步时间轴到Squeeze子图
+        this.syncTimeRangeToSqueezeChart(timeRange);
     }
     
     /**
@@ -2300,6 +2307,11 @@ class MainChart extends BaseChart {
         setTimeout(() => {
             this.loadVolumeDataToSubChart();
         }, 200);
+        
+        // 加载Squeeze数据到子图
+        setTimeout(() => {
+            this.loadSqueezeDataToSubChart();
+        }, 250);
     }
     
     /**
@@ -2668,6 +2680,9 @@ class MainChart extends BaseChart {
         try {
             // 销毁成交量子图
             this.destroyVolumeSubChart();
+            
+            // 销毁Squeeze子图
+            this.destroySqueezeSubChart();
             
             // 注销图表
             ChartRegistry.unregister(this.id);
@@ -3052,6 +3067,127 @@ class MainChart extends BaseChart {
             console.error('❌ 销毁成交量子图失败:', error);
         }
     }
+    
+    /**
+     * 创建Squeeze子图
+     */
+    createSqueezeSubChart(parentContainer) {
+        try {
+            // 创建Squeeze容器
+            this.squeezeContainer = document.createElement('div');
+            this.squeezeContainer.id = 'squeeze-chart-container';
+            this.squeezeContainer.style.cssText = `
+                width: 100%;
+                height: 150px;
+                margin-top: 10px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background: white;
+            `;
+            
+            // 添加标题
+            const titleDiv = document.createElement('div');
+            titleDiv.style.cssText = `
+                padding: 5px 10px;
+                background: #f8f9fa;
+                border-bottom: 1px solid #ddd;
+                font-size: 12px;
+                font-weight: bold;
+                color: #666;
+            `;
+            titleDiv.textContent = 'Squeeze Momentum';
+            this.squeezeContainer.appendChild(titleDiv);
+            
+            // 创建图表容器
+            const chartDiv = document.createElement('div');
+            chartDiv.style.cssText = `
+                width: 100%;
+                height: 120px;
+            `;
+            this.squeezeContainer.appendChild(chartDiv);
+            
+            // 添加到父容器
+            parentContainer.appendChild(this.squeezeContainer);
+            
+            // 创建Squeeze图表
+            this.squeezeChart = new SqueezeChart(chartDiv);
+            this.squeezeChart.create();
+            
+            // 添加到子图列表
+            this.addSubChart(this.squeezeChart);
+            
+            console.log('✅ Squeeze子图创建完成');
+            return this.squeezeChart;
+            
+        } catch (error) {
+            console.error('❌ 创建Squeeze子图失败:', error);
+            return null;
+        }
+    }
+    
+    /**
+     * 加载主股票的Squeeze数据到子图
+     */
+    async loadSqueezeDataToSubChart() {
+        if (!this.squeezeChart || this.stockInfos.length === 0) {
+            console.warn('⚠️ Squeeze子图未创建或无股票数据');
+            return;
+        }
+        
+        try {
+            // 获取主股票（第一只股票）的代码
+            const mainStockCode = this.stockInfos[0].code;
+            
+            // 加载Squeeze数据
+            await this.squeezeChart.loadSqueezeData(mainStockCode);
+            
+            console.log(`✅ 主股票 ${mainStockCode} Squeeze数据已加载到子图`);
+            
+        } catch (error) {
+            console.error('❌ 加载Squeeze数据到子图失败:', error);
+        }
+    }
+    
+    /**
+     * 同步时间轴到Squeeze子图
+     */
+    syncTimeRangeToSqueezeChart(timeRange) {
+        if (this.squeezeChart && timeRange) {
+            // 检查Squeeze子图是否有数据系列，避免不必要的警告
+            if (this.squeezeChart.series && this.squeezeChart.series.length > 0) {
+                this.squeezeChart.setTimeRange(timeRange);
+            } else {
+                // 如果Squeeze子图还没有数据系列，延迟同步
+                setTimeout(() => {
+                    if (this.squeezeChart && this.squeezeChart.series && this.squeezeChart.series.length > 0) {
+                        this.squeezeChart.setTimeRange(timeRange);
+                    }
+                }, 100);
+            }
+        }
+    }
+    
+    /**
+     * 销毁Squeeze子图
+     */
+    destroySqueezeSubChart() {
+        try {
+            if (this.squeezeChart) {
+                this.squeezeChart.destroy();
+                this.squeezeChart = null;
+            }
+            
+            if (this.squeezeContainer && this.squeezeContainer.parentNode) {
+                this.squeezeContainer.parentNode.removeChild(this.squeezeContainer);
+                this.squeezeContainer = null;
+            }
+            
+            console.log('✅ Squeeze子图已销毁');
+            
+        } catch (error) {
+            console.error('❌ 销毁Squeeze子图失败:', error);
+        }
+    }
 }
 
 // ================================
@@ -3247,6 +3383,235 @@ class VolumeChart extends BaseChart {
 }
 
 // ================================
+// Squeeze Chart Class
+// ================================
+class SqueezeChart extends BaseChart {
+    constructor(container) {
+        super(container, ChartConfig.getChartConfig('indicator'));
+        
+        // Squeeze图特有属性
+        this.momentumSeries = null;
+        this.zeroLineSeries = null;
+        this.mainStockData = null;
+        
+        console.log(`📊 SqueezeChart 已创建: ${this.id}`);
+    }
+    
+    onCreated() {
+        console.log('🚀 SqueezeChart.onCreated() 开始初始化...');
+        
+        // 设置Squeeze图的价格轴配置
+        this.setupSqueezeScale();
+        
+        console.log('✅ SqueezeChart 初始化完成');
+    }
+    
+    /**
+     * 设置Squeeze价格轴
+     */
+    setupSqueezeScale() {
+        try {
+            const squeezePriceScaleOptions = {
+                scaleMargins: { top: 0.1, bottom: 0.1 },
+                alignLabels: true,
+                borderVisible: true,
+                autoScale: true,
+                mode: 0, // 正常模式
+                priceFormat: {
+                    type: 'price',
+                    precision: 4,
+                    minMove: 0.0001
+                }
+            };
+            
+            console.log('🔧 [DEBUG] 配置Squeeze价格轴:', squeezePriceScaleOptions);
+            this.chart.priceScale('right').applyOptions(squeezePriceScaleOptions);
+            
+            console.log('✅ Squeeze价格轴已配置完成');
+        } catch (error) {
+            console.error('❌ Squeeze价格轴配置失败:', error);
+        }
+    }
+    
+    /**
+     * 加载主股票的Squeeze Momentum数据
+     */
+    async loadSqueezeData(stockCode) {
+        try {
+            console.log(`📊 开始加载Squeeze Momentum数据: ${stockCode}`);
+            
+            // 获取Squeeze指标数据
+            const response = await fetch(`/api/indicator?code=${stockCode}&type=squeeze_momentum`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const squeezeData = await response.json();
+            
+            if (!squeezeData || !Array.isArray(squeezeData) || squeezeData.length === 0) {
+                console.error(`❌ ${stockCode}: Squeeze数据无效`);
+                return;
+            }
+            
+            // 存储主股票数据
+            this.mainStockData = squeezeData;
+            
+            // 创建Squeeze系列
+            this.createSqueezeSeries(squeezeData);
+            
+            console.log(`✅ Squeeze Momentum数据加载完成: ${stockCode}`);
+            
+        } catch (error) {
+            console.error(`❌ 加载Squeeze Momentum数据失败: ${stockCode}`, error);
+            throw error;
+        }
+    }
+    
+    /**
+     * 创建Squeeze系列
+     */
+    createSqueezeSeries(squeezeData) {
+        try {
+            // 处理Squeeze数据
+            const processedData = this.processSqueezeData(squeezeData);
+            
+            if (processedData.momentumData.length === 0) {
+                console.warn('⚠️ 没有有效的Squeeze Momentum数据');
+                return;
+            }
+            
+            // 创建动量柱状图系列
+            this.momentumSeries = this.addSeries('histogram', {
+                priceScaleId: 'right',
+                priceFormat: {
+                    type: 'price',
+                    precision: 4,
+                    minMove: 0.0001
+                },
+                priceLineVisible: false,
+                lastValueVisible: true
+            });
+            
+            // 创建零线系列
+            this.zeroLineSeries = this.addSeries('line', {
+                priceScaleId: 'right',
+                color: '#808080',
+                lineWidth: 1,
+                priceLineVisible: false,
+                lastValueVisible: false
+            });
+            
+            if (!this.momentumSeries || !this.zeroLineSeries) {
+                console.error('❌ Squeeze系列创建失败');
+                return;
+            }
+            
+            // 设置数据
+            this.momentumSeries.setData(processedData.momentumData);
+            this.zeroLineSeries.setData(processedData.zeroLineData);
+            
+            console.log(`✅ Squeeze系列创建完成，动量数据点: ${processedData.momentumData.length}`);
+            
+        } catch (error) {
+            console.error('❌ 创建Squeeze系列失败:', error);
+        }
+    }
+    
+    /**
+     * 处理Squeeze数据
+     */
+    processSqueezeData(squeezeData) {
+        const momentumData = [];
+        const zeroLineData = [];
+        
+        squeezeData.forEach(item => {
+            if (item && item.time) {
+                // 动量数据 - 根据正负值设置颜色
+                if (item.momentum !== null && item.momentum !== undefined && isFinite(item.momentum)) {
+                    // 根据动量值的正负和变化趋势设置颜色
+                    let color = '#808080'; // 默认灰色
+                    
+                    if (item.momentum > 0) {
+                        // 正值：绿色系
+                        color = item.momentum_increasing ? '#00ff00' : '#008000'; // 亮绿/暗绿
+                    } else if (item.momentum < 0) {
+                        // 负值：红色系
+                        color = item.momentum_increasing ? '#ff6b6b' : '#dc143c'; // 亮红/暗红
+                    }
+                    
+                    momentumData.push({
+                        time: item.time,
+                        value: item.momentum,
+                        color: color
+                    });
+                }
+                
+                // 零线数据
+                zeroLineData.push({ 
+                    time: item.time, 
+                    value: 0 
+                });
+            }
+        });
+        
+        console.log(`📊 Squeeze数据处理完成: ${momentumData.length} 个动量数据点`);
+        return { momentumData, zeroLineData };
+    }
+    
+    /**
+     * 更新Squeeze数据
+     */
+    updateSqueezeData(newData) {
+        if (this.momentumSeries && this.zeroLineSeries && newData) {
+            const processedData = this.processSqueezeData(newData);
+            this.momentumSeries.setData(processedData.momentumData);
+            this.zeroLineSeries.setData(processedData.zeroLineData);
+            console.log('📊 Squeeze数据已更新');
+        }
+    }
+    
+    /**
+     * 清空Squeeze数据
+     */
+    clearSqueezeData() {
+        if (this.momentumSeries) {
+            this.momentumSeries.setData([]);
+        }
+        if (this.zeroLineSeries) {
+            this.zeroLineSeries.setData([]);
+        }
+        this.mainStockData = null;
+        console.log('📊 Squeeze数据已清空');
+    }
+    
+    /**
+     * 获取源名称
+     */
+    getSourceName() {
+        return 'squeeze';
+    }
+    
+    /**
+     * 销毁图表
+     */
+    destroy() {
+        try {
+            this.momentumSeries = null;
+            this.zeroLineSeries = null;
+            this.mainStockData = null;
+            
+            // 调用父类销毁方法
+            super.destroy();
+            
+            console.log(`📊 SqueezeChart 已销毁: ${this.id}`);
+            
+        } catch (error) {
+            console.error('❌ SqueezeChart 销毁失败:', error);
+        }
+    }
+}
+
+// ================================
 // 导出和全局注册
 // ================================
 
@@ -3263,6 +3628,7 @@ window.ChartRegistry = ChartRegistry;
 window.BaseChart = BaseChart;
 window.MainChart = MainChart;
 window.VolumeChart = VolumeChart;
+window.SqueezeChart = SqueezeChart;
 
 // 全局回调函数，用于图例交互
 window.toggleStock = function(index) {
