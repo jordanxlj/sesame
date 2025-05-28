@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Squeeze Momentum子图测试</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .controls {
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .controls button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .controls button:hover {
+            background: #0056b3;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 15px 0;
+            background: white;
+            position: relative;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Squeeze Momentum子图测试</h1>
+            <p>测试独立的Squeeze Momentum指标子图功能</p>
+        </div>
+        
+        <div class="controls">
+            <button onclick="createTest()">创建图表</button>
+            <button onclick="loadData()">加载数据</button>
+            <button onclick="toggleSqueeze()">切换Squeeze子图</button>
+            <button onclick="clearTest()">清空测试</button>
+        </div>
+        
+        <div id="status" class="status">等待操作...</div>
+        
+        <div id="main-chart" class="chart-container"></div>
+        
+        <div class="info">
+            <strong>功能说明：</strong><br>
+            • Squeeze Momentum子图显示主股票的动量指标<br>
+            • 动量柱状图颜色编码：<br>
+            &nbsp;&nbsp;- 正值：亮绿色（上升趋势）/ 暗绿色（下降趋势）<br>
+            &nbsp;&nbsp;- 负值：亮红色（上升趋势）/ 暗红色（下降趋势）<br>
+            • 零线作为参考基准<br>
+            • 时间轴与主图自动同步<br>
+            • 支持独立的缩放和平移操作
+        </div>
+    </div>
+
+    <!-- 引入LightweightCharts库 -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- 引入重构版本 -->
+    <script src="/static/lightweight-charts.js"></script>
+    
+    <script>
+        let mainChart = null;
+        let testContainer = null;
+        
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.style.color = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#6c757d';
+            console.log(`[Squeeze测试] ${message}`);
+        }
+        
+        async function createTest() {
+            try {
+                updateStatus('正在创建主图和Squeeze子图...', 'info');
+                
+                // 清理现有测试
+                if (mainChart) {
+                    mainChart.destroy();
+                    mainChart = null;
+                }
+                
+                // 获取主图容器
+                const container = document.getElementById('main-chart');
+                container.innerHTML = '';
+                
+                // 创建主图
+                mainChart = new MainChart(container);
+                mainChart.create();
+                
+                // 创建Squeeze子图
+                testContainer = container.parentElement;
+                mainChart.createSqueezeSubChart(testContainer);
+                
+                updateStatus('主图和Squeeze子图创建完成', 'success');
+                
+            } catch (error) {
+                console.error('创建测试失败:', error);
+                updateStatus('创建失败: ' + error.message, 'error');
+            }
+        }
+        
+        async function loadData() {
+            if (!mainChart) {
+                updateStatus('请先创建图表', 'error');
+                return;
+            }
+            
+            try {
+                updateStatus('正在加载测试数据...', 'info');
+                
+                // 加载股票数据和指标
+                const codes = ['HK.01810']; // 测试股票
+                const indicators = ['supertrend', 'ma5'];
+                
+                await mainChart.loadData(codes, indicators);
+                
+                updateStatus('数据加载完成，Squeeze子图已同步显示', 'success');
+                
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                updateStatus('数据加载失败: ' + error.message, 'error');
+            }
+        }
+        
+        function toggleSqueeze() {
+            if (!mainChart) {
+                updateStatus('请先创建图表', 'error');
+                return;
+            }
+            
+            try {
+                if (mainChart.squeezeChart) {
+                    // 销毁Squeeze子图
+                    mainChart.destroySqueezeSubChart();
+                    updateStatus('Squeeze子图已隐藏', 'info');
+                } else {
+                    // 重新创建Squeeze子图
+                    mainChart.createSqueezeSubChart(testContainer);
+                    // 如果有数据，重新加载
+                    if (mainChart.stockInfos.length > 0) {
+                        setTimeout(() => {
+                            mainChart.loadSqueezeDataToSubChart();
+                        }, 100);
+                    }
+                    updateStatus('Squeeze子图已显示', 'success');
+                }
+            } catch (error) {
+                console.error('切换Squeeze子图失败:', error);
+                updateStatus('切换失败: ' + error.message, 'error');
+            }
+        }
+        
+        function clearTest() {
+            try {
+                if (mainChart) {
+                    mainChart.destroy();
+                    mainChart = null;
+                }
+                
+                const container = document.getElementById('main-chart');
+                container.innerHTML = '';
+                
+                // 清理可能残留的Squeeze容器
+                const squeezeContainer = document.getElementById('squeeze-chart-container');
+                if (squeezeContainer && squeezeContainer.parentNode) {
+                    squeezeContainer.parentNode.removeChild(squeezeContainer);
+                }
+                
+                updateStatus('测试已清空', 'info');
+                
+            } catch (error) {
+                console.error('清空测试失败:', error);
+                updateStatus('清空失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus('页面加载完成，可以开始测试', 'success');
+        });
+    </script>
+</body>
+</html> 

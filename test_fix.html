@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据截断问题修复测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+        }
+        .test-info {
+            background: #e8f4fd;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .test-info h3 {
+            margin-top: 0;
+            color: #0c5460;
+        }
+        .test-steps {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .test-steps h3 {
+            margin-top: 0;
+            color: #856404;
+        }
+        .test-steps ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .test-steps li {
+            margin: 8px 0;
+        }
+        .chart-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            position: relative;
+            background: white;
+        }
+        .controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn.success {
+            background: #28a745;
+        }
+        .btn.warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status.loading {
+            background: #cce5ff;
+            color: #004085;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 数据截断问题修复测试</h1>
+            <p>测试多股票价格信息栏数据显示修复</p>
+        </div>
+
+        <div class="test-info">
+            <h3>🎯 修复内容</h3>
+            <ul>
+                <li><strong>问题</strong>：多股票选择时，价格信息栏只显示部分股票数据，造成"数据截断"现象</li>
+                <li><strong>原因</strong>：股票可见性逻辑错误，隐藏的股票不显示价格数据</li>
+                <li><strong>修复</strong>：价格信息栏始终显示所有股票的价格数据，不受图表可见性影响</li>
+                <li><strong>改进</strong>：保持可见性的视觉指示，隐藏的股票会显示"(图表中已隐藏)"提示</li>
+            </ul>
+        </div>
+
+        <div class="test-steps">
+            <h3>🧪 测试步骤</h3>
+            <ol>
+                <li>点击"加载三只股票"按钮</li>
+                <li>观察价格信息栏是否显示所有三只股票的数据</li>
+                <li>点击股票名称切换显示/隐藏状态</li>
+                <li>验证隐藏的股票仍然显示价格数据，但有"(图表中已隐藏)"提示</li>
+                <li>移动鼠标到图表上，观察价格信息栏的实时更新</li>
+            </ol>
+        </div>
+
+        <div class="controls">
+            <button class="btn" onclick="loadThreeStocks()">加载三只股票 (01810, 09660, 02432)</button>
+            <button class="btn success" onclick="showAllStocks()">显示所有股票</button>
+            <button class="btn warning" onclick="hideFirstTwo()">隐藏前两只股票</button>
+            <button class="btn" onclick="clearChart()">清空图表</button>
+        </div>
+
+        <div id="status" class="status loading">准备就绪，请点击"加载三只股票"开始测试</div>
+
+        <div id="chart-container" class="chart-container"></div>
+    </div>
+
+    <!-- 引入LightweightCharts库 -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- 引入重构版本 -->
+    <script src="/static/lightweight-charts.js"></script>
+
+    <script>
+        let mainChart = null;
+
+        function updateStatus(message, type = 'loading') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        async function loadThreeStocks() {
+            try {
+                updateStatus('正在加载三只股票数据...', 'loading');
+                
+                // 清空现有图表
+                if (mainChart) {
+                    mainChart.destroy();
+                }
+
+                // 创建新的主图
+                const container = document.getElementById('chart-container');
+                container.innerHTML = ''; // 清空容器
+                
+                mainChart = new MainChart(container);
+                mainChart.create();
+
+                // 加载三只股票数据
+                const codes = ['HK.01810', 'HK.09660', 'HK.02432'];
+                const indicators = ['supertrend', 'ma5', 'ma10'];
+                
+                await mainChart.loadData(codes, indicators);
+                
+                updateStatus('✅ 三只股票数据加载完成！现在可以测试价格信息栏显示', 'success');
+                
+            } catch (error) {
+                console.error('加载失败:', error);
+                updateStatus('❌ 加载失败: ' + error.message, 'error');
+            }
+        }
+
+        function showAllStocks() {
+            if (!mainChart) {
+                updateStatus('请先加载股票数据', 'error');
+                return;
+            }
+            
+            // 显示所有股票
+            for (let i = 0; i < 3; i++) {
+                if (mainChart.stockVisibility[i] === false) {
+                    mainChart.toggleStockVisibility(i);
+                }
+            }
+            updateStatus('✅ 所有股票已显示', 'success');
+        }
+
+        function hideFirstTwo() {
+            if (!mainChart) {
+                updateStatus('请先加载股票数据', 'error');
+                return;
+            }
+            
+            // 隐藏前两只股票
+            for (let i = 0; i < 2; i++) {
+                if (mainChart.stockVisibility[i] !== false) {
+                    mainChart.toggleStockVisibility(i);
+                }
+            }
+            updateStatus('✅ 前两只股票已隐藏，但价格信息栏仍应显示它们的数据', 'success');
+        }
+
+        function clearChart() {
+            if (mainChart) {
+                mainChart.destroy();
+                mainChart = null;
+            }
+            document.getElementById('chart-container').innerHTML = '';
+            updateStatus('图表已清空', 'loading');
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🧪 数据截断问题修复测试页面已加载');
+            console.log('📊 可用的测试功能:', {
+                loadThreeStocks: '加载三只股票',
+                showAllStocks: '显示所有股票',
+                hideFirstTwo: '隐藏前两只股票',
+                clearChart: '清空图表'
+            });
+        });
+    </script>
+</body>
+</html> 

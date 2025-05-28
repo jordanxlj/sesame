@@ -2,91 +2,196 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>SuperTrend Chart</title>
+    <title>SuperTrend Chart - V2.1.0</title>
     <script src="/static/lightweight-charts.standalone.production.js"></script>
     <script src="/static/lightweight-charts.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <style>
-        #chart { width: 1000px; height: 400px; }
-        #volume-chart { width: 1000px; height: 200px; margin-top: 8px; }
-        body { font-family: Arial, sans-serif; }
-        .form-bar { margin-bottom: 16px; }
-        label { margin-right: 8px; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+        }
+        
+        .form-bar { 
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .form-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        label { 
+            margin-right: 8px;
+            font-weight: 500;
+            color: #495057;
+        }
+        
         button { 
-            padding: 6px 12px; 
+            padding: 8px 16px; 
             margin-left: 10px; 
             border: 1px solid #ccc; 
             border-radius: 4px; 
             background-color: #f8f9fa; 
-            cursor: pointer; 
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
         }
+        
         button:hover { 
             background-color: #e9ecef; 
+            transform: translateY(-1px);
         }
+        
         button:active { 
             background-color: #dee2e6; 
+            transform: translateY(0);
         }
+        
         .reset-btn {
             background-color: #17a2b8;
             color: white;
             border-color: #17a2b8;
             font-weight: 500;
         }
+        
         .reset-btn:hover {
             background-color: #138496;
             border-color: #117a8b;
         }
+        
         .indicator {
             margin-right: 4px;
         }
+        
         .form-bar label {
             display: inline-flex;
             align-items: center;
             margin-right: 12px;
         }
+        
         .loading-indicator {
             display: none;
             color: #007bff;
             font-style: italic;
             margin-left: 10px;
         }
+        
+        .chart-container {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            margin: 15px 0;
+            background: white;
+            position: relative;
+        }
+        
+        .status-bar {
+            background: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 14px;
+            color: #495057;
+        }
+        
+        .version-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
-    <div class="form-bar">
-        <label for="code">股票代码:</label>
-        <select id="code" multiple="multiple" style="width:300px">
-            <option value="HK.09660">HK.09660 - HORIZON ROBOTICS</option>
-            <option value="09660.HK">09660.HK - HORIZON ROBOTICS</option>
-        </select>
-        <label>指标:</label>
-        <label><input type="checkbox" class="indicator" value="supertrend" checked>SuperTrend</label>
-        <label><input type="checkbox" class="indicator" value="ma5">MA5</label>
-        <label><input type="checkbox" class="indicator" value="ma10">MA10</label>
-        <label><input type="checkbox" class="indicator" value="squeeze_momentum">Squeeze Momentum</label>
-        <button onclick="resetCharts()" class="reset-btn" title="重置图表：强制同步所有图表并适配到实际数据范围">重置图表</button>
-        <span id="loading-indicator" class="loading-indicator">正在加载图表...</span>
+    <div class="container">
+        <div class="header">
+            <h1>📊 SuperTrend Chart</h1>
+            <p>LightWeight Charts V2.1.0 - 多股票技术分析平台</p>
+        </div>
+        
+        <div class="form-bar">
+            <div class="form-row">
+                <label for="code">股票代码:</label>
+                <select id="code" multiple="multiple" style="width:350px">
+                    <option value="HK.09660">HK.09660 - HORIZON ROBOTICS</option>
+                    <option value="HK.01810">HK.01810 - 小米集团</option>
+                    <option value="HK.02432">HK.02432 - 阿里巴巴</option>
+                </select>
+            </div>
+            
+            <div class="form-row">
+                <label>技术指标:</label>
+                <label><input type="checkbox" class="indicator" value="supertrend" checked>SuperTrend</label>
+                <label><input type="checkbox" class="indicator" value="ma5">MA5</label>
+                <label><input type="checkbox" class="indicator" value="ma10">MA10</label>
+                <label><input type="checkbox" class="indicator" value="squeeze_momentum">Squeeze Momentum</label>
+            </div>
+            
+            <div class="form-row">
+                <button onclick="loadChart()" class="reset-btn">加载图表</button>
+                <button onclick="resetCharts()" title="重置图表：适配到数据范围并优化显示">重置图表</button>
+                <button onclick="clearChart()">清空图表</button>
+                <span id="loading-indicator" class="loading-indicator">正在加载图表...</span>
+            </div>
+        </div>
+        
+        <div id="status-bar" class="status-bar">
+            准备就绪 - 请选择股票代码并点击"加载图表"
+        </div>
+        
+        <div id="chart-container" class="chart-container">
+            <div class="version-info">V2.1.0</div>
+        </div>
     </div>
-    <div id="info-bar" style="font-size:14px; margin-bottom:8px; line-height:1.4; max-height:120px; overflow-y:auto; padding:8px; border:1px solid #e0e0e0; border-radius:4px; background-color:#f9f9f9;"></div>
-    <div id="chart"></div>
-    <div id="volume-chart"></div>
+
     <script>
         // ===== 全局变量 =====
-        let chartManager = null;
-        window.chartManager = null; // 确保全局可访问
+        let mainChart = null;
         let loadTimeout = null; // 防抖定时器
         
         // ===== 初始化 =====
         $(document).ready(function() {
-            // 初始化图表管理器
-            chartManager = new ChartManager();
-            window.chartManager = chartManager;
+            console.log('🚀 SuperTrend Chart V2.1.0 初始化中...');
             
             // 初始化股票代码选择器
             $('#code').select2({
-                placeholder: '请选择股票代码',
+                placeholder: '请选择股票代码（支持多选）',
                 allowClear: true
             });
             
@@ -102,7 +207,30 @@
             
             // 动态加载股票列表
             loadStockOptions();
+            
+            updateStatus('系统初始化完成', 'success');
         });
+        
+        // ===== 状态更新函数 =====
+        function updateStatus(message, type = 'info') {
+            const statusBar = document.getElementById('status-bar');
+            const icons = {
+                info: 'ℹ️',
+                success: '✅',
+                error: '❌',
+                loading: '⏳'
+            };
+            
+            statusBar.textContent = `${icons[type] || 'ℹ️'} ${message}`;
+            statusBar.style.background = {
+                info: '#e9ecef',
+                success: '#d4edda',
+                error: '#f8d7da',
+                loading: '#cce5ff'
+            }[type] || '#e9ecef';
+            
+            console.log(`[状态] ${message}`);
+        }
         
         // ===== 加载股票选项 =====
         function loadStockOptions() {
@@ -118,27 +246,11 @@
                     });
                     
                     select.trigger('change'); // 通知select2更新
-                    
-                    // 如果有默认选择，自动加载图表
-                    setTimeout(() => {
-                        const currentSelection = select.val();
-                        if (currentSelection && currentSelection.length > 0) {
-                            console.log('检测到默认选择，自动加载图表:', currentSelection);
-                            autoLoadChart();
-                        }
-                    }, 100);
+                    updateStatus('股票列表加载完成', 'success');
                 })
                 .catch(error => {
                     console.error('加载股票列表失败:', error);
-                    // 如果加载失败，保留默认选项，并尝试自动加载
-                    setTimeout(() => {
-                        const select = $('#code');
-                        const currentSelection = select.val();
-                        if (currentSelection && currentSelection.length > 0) {
-                            console.log('使用默认选项，自动加载图表:', currentSelection);
-                            autoLoadChart();
-                        }
-                    }, 100);
+                    updateStatus('股票列表加载失败，使用默认选项', 'error');
                 });
         }
         
@@ -160,28 +272,28 @@
                 }
                 
                 loadChart();
-            }, 300); // 300ms防抖延迟
+            }, 500); // 500ms防抖延迟
         }
         
         // ===== 清空图表函数 =====
         function clearChart() {
-            if (chartManager) {
-                chartManager.destroy();
-                chartManager = new ChartManager();
-                window.chartManager = chartManager;
+            if (mainChart) {
+                mainChart.destroy();
+                mainChart = null;
             }
             
-            // 清空信息栏
-            document.getElementById('info-bar').innerText = '';
-            console.log('图表已清空');
+            // 清空容器
+            const container = document.getElementById('chart-container');
+            container.innerHTML = '<div class="version-info">V2.1.0</div>';
+            
+            updateStatus('图表已清空', 'info');
         }
         
         // ===== 图表加载函数 =====
         async function loadChart() {
             const codes = $('#code').val();
             if (!codes || codes.length === 0) {
-                console.log('没有选择股票代码，跳过加载');
-                hideLoadingIndicator();
+                updateStatus('请选择股票代码', 'error');
                 return;
             }
             
@@ -191,34 +303,50 @@
             });
             
             console.log('开始加载图表:', { codes, selectedIndicators });
+            updateStatus('正在加载图表数据...', 'loading');
             
             // 显示加载指示器
             showLoadingIndicator();
             
-            // 销毁现有图表
-            if (chartManager) {
-                chartManager.destroy();
-            }
-            
-            // 重新创建图表管理器
-            chartManager = new ChartManager();
-            window.chartManager = chartManager;
-            
             try {
-                // 始终使用多面板布局，实现K线和成交量完全分离
-                console.log('🎯 使用多面板布局（K线与成交量分离）');
-                const multiPanelManager = chartManager.createMultiPanelChart(document.getElementById('chart'));
-                await multiPanelManager.loadData(codes, selectedIndicators);
+                // 销毁现有图表
+                if (mainChart) {
+                    mainChart.destroy();
+                }
                 
-                // 兼容性支持
-                window.mainChart = multiPanelManager.mainChart.chart;
+                // 获取图表容器
+                const container = document.getElementById('chart-container');
+                container.innerHTML = '<div class="version-info">V2.1.0</div>';
                 
+                // 创建主图
+                mainChart = new MainChart(container);
+                mainChart.create();
+                
+                // 创建子图
+                const parentContainer = container.parentElement;
+                
+                // 创建成交量子图
+                if (selectedIndicators.includes('squeeze_momentum')) {
+                    // 如果包含Squeeze指标，创建成交量和Squeeze子图
+                    mainChart.createVolumeSubChart(parentContainer);
+                    mainChart.createSqueezeSubChart(parentContainer);
+                } else {
+                    // 否则只创建成交量子图
+                    mainChart.createVolumeSubChart(parentContainer);
+                }
+                
+                // 加载数据
+                await mainChart.loadData(codes, selectedIndicators);
+                
+                updateStatus(`图表加载完成 - ${codes.length}只股票，${selectedIndicators.length}个指标`, 'success');
                 hideLoadingIndicator();
-                console.log('图表加载完成');
+                
+                console.log('✅ 图表加载完成');
+                
             } catch (error) {
                 hideLoadingIndicator();
-                console.error('图表加载失败:', error);
-                alert('图表加载失败: ' + error.message);
+                updateStatus('图表加载失败: ' + error.message, 'error');
+                console.error('❌ 图表加载失败:', error);
             }
         }
         
@@ -237,87 +365,51 @@
             }
         }
         
-        // ===== 强制同步图表函数 =====
-        function forceSyncCharts() {
-            try {
-                if (window.chartManager && window.chartManager.forceSyncCharts) {
-                    return window.chartManager.forceSyncCharts();
-                } else {
-                    console.warn('ChartManager或forceSyncCharts方法不可用');
-                    return { success: false, message: 'ChartManager不可用' };
-                }
-            } catch (error) {
-                console.error('强制同步失败:', error);
-                return { success: false, message: error.message };
-            }
-        }
-        
         // ===== 重置图表函数 =====
         function resetCharts() {
+            if (!mainChart) {
+                updateStatus('没有图表需要重置', 'error');
+                return;
+            }
+            
             try {
                 console.log('开始重置图表...');
+                updateStatus('正在重置图表...', 'loading');
                 
-                let syncSuccess = false;
-                let fitSuccess = false;
+                // 适配内容到数据范围
+                mainChart.fitContentToData();
                 
-                // 1. 强制同步所有图表
-                const syncResult = forceSyncCharts();
-                if (syncResult && syncResult.success) {
-                    syncSuccess = true;
-                    console.log('强制同步成功:', syncResult.message);
-                } else {
-                    console.warn('强制同步失败:', syncResult ? syncResult.message : '未知错误');
-                }
-                
-                // 2. 适配数据范围
-                if (window.fitChartsToData && typeof window.fitChartsToData === 'function') {
-                    window.fitChartsToData();
-                    fitSuccess = true;
-                    console.log('适配数据范围完成');
-                } else if (window.chartManager && window.chartManager.fitAllChartsToData) {
-                    const fitResult = window.chartManager.fitAllChartsToData();
-                    if (fitResult && fitResult.success) {
-                        fitSuccess = true;
-                        console.log('适配数据范围成功:', fitResult.message);
-                    } else {
-                        console.warn('适配数据范围失败:', fitResult ? fitResult.message : '未知错误');
+                // 优化价格范围
+                setTimeout(() => {
+                    if (mainChart.optimizePriceRange) {
+                        mainChart.optimizePriceRange();
                     }
-                }
+                }, 100);
                 
-                // 显示结果提示
-                const successCount = (syncSuccess ? 1 : 0) + (fitSuccess ? 1 : 0);
-                let message = '';
-                
-                if (successCount === 2) {
-                    message = '图表重置完成：已强制同步并适配到数据范围';
-                } else if (successCount === 1) {
-                    message = '图表重置部分完成：' + (syncSuccess ? '已强制同步' : '已适配数据范围');
-                } else {
-                    message = '图表重置失败：请检查控制台日志';
-                }
-                
-                console.log('图表重置完成，成功操作数:', successCount);
-                alert(message);
+                updateStatus('图表重置完成', 'success');
+                console.log('✅ 图表重置完成');
                 
             } catch (error) {
-                console.error('重置图表失败:', error);
-                alert('重置图表时发生错误: ' + error.message);
+                updateStatus('图表重置失败: ' + error.message, 'error');
+                console.error('❌ 重置图表失败:', error);
             }
         }
         
-        // ===== 兼容性支持 =====
-        // 保持与原有代码的兼容性
+        // ===== 全局变量导出（兼容性） =====
         window.mainChart = null;
-        window.squeezeChart = null;
-        window.squeezeChartInstance = null;
         
-        // 当主图创建时更新全局变量
-        const originalCreateMainChart = ChartManager.prototype.createMainChart;
-        ChartManager.prototype.createMainChart = function(container) {
-            const result = originalCreateMainChart.call(this, container);
-            window.mainChart = result.chart;
-            return result;
-        };
+        // 监听主图创建，更新全局变量
+        document.addEventListener('DOMContentLoaded', function() {
+            // 定期检查并更新全局变量
+            setInterval(() => {
+                if (mainChart && mainChart !== window.mainChart) {
+                    window.mainChart = mainChart;
+                }
+            }, 1000);
+        });
+        
+        console.log('📊 SuperTrend Chart V2.1.0 脚本加载完成');
     </script>
 </body>
+</html> 
 </html> 

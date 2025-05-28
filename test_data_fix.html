@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据截断问题修复验证</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .test-case {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        .test-case h4 {
+            margin: 0 0 10px 0;
+            color: #6c757d;
+        }
+        .chart-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            position: relative;
+            background: white;
+            margin: 20px 0;
+        }
+        .controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn.success {
+            background: #28a745;
+        }
+        .btn.warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        .btn.danger {
+            background: #dc3545;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status.loading {
+            background: #cce5ff;
+            color: #004085;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .log-container {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 数据截断问题修复验证</h1>
+            <p>测试多股票时间轴动态调整和价格信息栏完整显示</p>
+        </div>
+
+        <div class="test-section">
+            <h3>🎯 修复内容总结</h3>
+            <div class="test-case">
+                <h4>1. 动态时间轴调整</h4>
+                <p>✅ 添加了 <code>adjustTimeRangeToVisibleStocks()</code> 方法</p>
+                <p>✅ 切换股票可见性时自动调整时间轴范围</p>
+                <p>✅ 只显示可见股票的数据时间范围</p>
+            </div>
+            <div class="test-case">
+                <h4>2. 改进的数据查找</h4>
+                <p>✅ 添加了 <code>findStockDataAtTime()</code> 方法</p>
+                <p>✅ 支持时间戳精确匹配（1秒误差内）</p>
+                <p>✅ 支持字符串时间匹配</p>
+                <p>✅ 支持最接近时间点查找（1天内）</p>
+            </div>
+            <div class="test-case">
+                <h4>3. 价格信息栏完整显示</h4>
+                <p>✅ 价格信息栏显示所有股票数据，不受可见性影响</p>
+                <p>✅ 隐藏的股票显示"(图表中已隐藏)"提示</p>
+                <p>✅ 保持可见性的视觉指示（透明度、删除线）</p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🧪 测试用例</h3>
+            <div class="test-case">
+                <h4>测试用例 1：三只股票都选中</h4>
+                <p><strong>预期</strong>：01810 的数据应完整显示，包括 10月24日 之前的数据</p>
+                <p><strong>验证</strong>：移动鼠标到图表左侧，观察价格信息栏是否显示 01810 的早期数据</p>
+            </div>
+            <div class="test-case">
+                <h4>测试用例 2：隐藏 09660</h4>
+                <p><strong>预期</strong>：01810 的数据应完整显示，包括 12月23日 之前的数据</p>
+                <p><strong>验证</strong>：时间轴应自动调整，价格信息栏仍显示所有股票数据</p>
+            </div>
+            <div class="test-case">
+                <h4>测试用例 3：只显示 01810</h4>
+                <p><strong>预期</strong>：01810 的数据应完整显示，不受其他股票影响</p>
+                <p><strong>验证</strong>：时间轴应调整到 01810 的完整数据范围</p>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" onclick="loadThreeStocks()">🚀 加载三只股票</button>
+            <button class="btn success" onclick="showAllStocks()">👁️ 显示所有股票</button>
+            <button class="btn warning" onclick="hideStock(1)">🙈 隐藏 09660</button>
+            <button class="btn warning" onclick="hideStock(0)">🙈 隐藏 02432</button>
+            <button class="btn danger" onclick="showOnlyStock(2)">🎯 只显示 01810</button>
+            <button class="btn" onclick="clearChart()">🗑️ 清空图表</button>
+        </div>
+
+        <div id="status" class="status loading">准备就绪，请点击"加载三只股票"开始测试</div>
+
+        <div id="chart-container" class="chart-container"></div>
+
+        <div class="test-section">
+            <h3>📊 调试日志</h3>
+            <div id="log-container" class="log-container">
+                <div>等待操作...</div>
+            </div>
+            <button class="btn" onclick="clearLogs()">清空日志</button>
+        </div>
+    </div>
+
+    <!-- 引入LightweightCharts库 -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- 引入重构版本 -->
+    <script src="/static/lightweight-charts.js"></script>
+
+    <script>
+        let mainChart = null;
+        let originalConsoleLog = console.log;
+
+        // 劫持console.log来显示调试信息
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            
+            // 只显示相关的调试信息
+            const message = args.join(' ');
+            if (message.includes('📊') || message.includes('⏰') || message.includes('🔍') || 
+                message.includes('✅') || message.includes('❌') || message.includes('⚠️')) {
+                addLog(message);
+            }
+        };
+
+        function addLog(message) {
+            const logContainer = document.getElementById('log-container');
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('log-container').innerHTML = '<div>日志已清空...</div>';
+        }
+
+        function updateStatus(message, type = 'loading') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            addLog(`状态更新: ${message}`);
+        }
+
+        async function loadThreeStocks() {
+            try {
+                updateStatus('正在加载三只股票数据...', 'loading');
+                
+                // 清空现有图表
+                if (mainChart) {
+                    mainChart.destroy();
+                }
+
+                // 创建新的主图
+                const container = document.getElementById('chart-container');
+                container.innerHTML = ''; // 清空容器
+                
+                mainChart = new MainChart(container);
+                mainChart.create();
+
+                // 加载三只股票数据
+                const codes = ['HK.02432', 'HK.09660', 'HK.01810']; // 调整顺序，01810作为最后一个
+                const indicators = ['supertrend', 'ma5', 'ma10'];
+                
+                await mainChart.loadData(codes, indicators);
+                
+                updateStatus('✅ 三只股票数据加载完成！现在可以测试各种场景', 'success');
+                
+            } catch (error) {
+                console.error('加载失败:', error);
+                updateStatus('❌ 加载失败: ' + error.message, 'error');
+            }
+        }
+
+        function showAllStocks() {
+            if (!mainChart) {
+                updateStatus('请先加载股票数据', 'error');
+                return;
+            }
+            
+            // 显示所有股票
+            for (let i = 0; i < 3; i++) {
+                if (mainChart.stockVisibility[i] === false) {
+                    mainChart.toggleStockVisibility(i);
+                }
+            }
+            updateStatus('✅ 所有股票已显示', 'success');
+        }
+
+        function hideStock(index) {
+            if (!mainChart) {
+                updateStatus('请先加载股票数据', 'error');
+                return;
+            }
+            
+            if (mainChart.stockVisibility[index] !== false) {
+                mainChart.toggleStockVisibility(index);
+            }
+            
+            const stockNames = ['02432', '09660', '01810'];
+            updateStatus(`✅ 股票 ${stockNames[index]} 已隐藏`, 'success');
+        }
+
+        function showOnlyStock(index) {
+            if (!mainChart) {
+                updateStatus('请先加载股票数据', 'error');
+                return;
+            }
+            
+            // 隐藏其他股票，只显示指定股票
+            for (let i = 0; i < 3; i++) {
+                if (i !== index && mainChart.stockVisibility[i] !== false) {
+                    mainChart.toggleStockVisibility(i);
+                } else if (i === index && mainChart.stockVisibility[i] === false) {
+                    mainChart.toggleStockVisibility(i);
+                }
+            }
+            
+            const stockNames = ['02432', '09660', '01810'];
+            updateStatus(`✅ 只显示股票 ${stockNames[index]}`, 'success');
+        }
+
+        function clearChart() {
+            if (mainChart) {
+                mainChart.destroy();
+                mainChart = null;
+            }
+            document.getElementById('chart-container').innerHTML = '';
+            updateStatus('图表已清空', 'loading');
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            addLog('🧪 数据截断问题修复验证页面已加载');
+            addLog('📊 可用的测试功能已准备就绪');
+        });
+    </script>
+</body>
+</html> 
