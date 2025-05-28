@@ -1044,10 +1044,65 @@ class MainChart extends BaseChart {
             });
         }
         
+        // 动态调整时间轴到所有可见股票的范围
+        setTimeout(() => {
+            this.adjustTimeRangeToVisibleStocks();
+        }, 100);
+        
         // 更新信息栏（股票列表会自动刷新）
         this.updateInfoBarWithLatestData();
         
         console.log(`📊 股票 ${this.stockInfos[index].code} 可见性已切换为: ${this.stockVisibility[index]} (包含${this.stockIndicatorSeries[index]?.length || 0}个指标系列)`);
+    }
+    
+    /**
+     * 动态调整时间轴到所有可见股票的范围
+     */
+    adjustTimeRangeToVisibleStocks() {
+        if (!this.chart) return;
+        
+        try {
+            // 获取所有可见股票的数据范围
+            let minTime = Infinity;
+            let maxTime = -Infinity;
+            let hasVisibleData = false;
+            
+            this.stockInfos.forEach((stockInfo, index) => {
+                if (this.stockVisibility[index] !== false && stockInfo && stockInfo.data && stockInfo.data.length > 0) {
+                    hasVisibleData = true;
+                    const times = stockInfo.data.map(item => ChartUtils.convertTimeToNumber(item.time)).filter(t => !isNaN(t));
+                    if (times.length > 0) {
+                        const stockMinTime = Math.min(...times);
+                        const stockMaxTime = Math.max(...times);
+                        minTime = Math.min(minTime, stockMinTime);
+                        maxTime = Math.max(maxTime, stockMaxTime);
+                        
+                        console.log(`📊 股票 ${stockInfo.code} 时间范围: ${new Date(stockMinTime * 1000).toISOString().split('T')[0]} - ${new Date(stockMaxTime * 1000).toISOString().split('T')[0]}`);
+                    }
+                }
+            });
+            
+            if (!hasVisibleData || minTime === Infinity || maxTime === -Infinity) {
+                console.warn('⚠️ 没有可见股票数据，无法调整时间范围');
+                return;
+            }
+            
+            // 添加一些边距
+            const timeRange = maxTime - minTime;
+            const margin = timeRange * 0.02; // 2%的边距
+            const adjustedRange = {
+                from: minTime - margin,
+                to: maxTime + margin
+            };
+            
+            // 设置时间范围
+            this.chart.timeScale().setVisibleRange(adjustedRange);
+            
+            console.log(`⏰ 时间轴已调整到可见股票范围: ${new Date(adjustedRange.from * 1000).toISOString().split('T')[0]} - ${new Date(adjustedRange.to * 1000).toISOString().split('T')[0]}`);
+            
+        } catch (error) {
+            console.error('❌ 调整时间轴范围失败:', error);
+        }
     }
     
     /**
@@ -1245,7 +1300,7 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 更新信息栏
+     * 更新信息栏 - 增强版本
      */
     updateInfoBar(param) {
         const infoBar = this.createInfoBar();
@@ -1256,43 +1311,74 @@ class MainChart extends BaseChart {
             return;
         }
         
-        // 安全地转换时间
+        // 增强的时间转换逻辑
         let timeStr = '';
+        let paramTimeNum = null;
+        
         try {
+            console.log(`🔍 [DEBUG] 处理时间参数:`, param.time, typeof param.time);
+            
             if (typeof param.time === 'number' && isFinite(param.time) && param.time > 0) {
                 // 时间戳格式
+                paramTimeNum = param.time;
                 const date = new Date(param.time * 1000);
                 if (!isNaN(date.getTime())) {
                     timeStr = date.toISOString().split('T')[0];
                 } else {
-                    console.warn('Invalid date from param.time:', param.time);
-                    this.updateInfoBarWithLatestData();
-                    return;
+                    throw new Error('Invalid date from param.time');
                 }
-            } else if (typeof param.time === 'string') {
-                // 字符串格式的日期，直接使用
+            } else if (typeof param.time === 'string' && param.time.length > 0) {
+                // 字符串格式的日期
                 timeStr = param.time;
-                //console.log('📅 使用字符串时间:', timeStr);
+                paramTimeNum = ChartUtils.convertTimeToNumber(param.time);
+                if (isNaN(paramTimeNum)) {
+                    // 尝试直接解析日期字符串
+                    const date = new Date(param.time);
+                    if (!isNaN(date.getTime())) {
+                        paramTimeNum = date.getTime() / 1000;
+                        timeStr = date.toISOString().split('T')[0];
+                    } else {
+                        throw new Error('Cannot parse string time');
+                    }
+                }
             } else {
-                console.warn('Invalid param.time value:', param.time, 'type:', typeof param.time);
-                this.updateInfoBarWithLatestData();
-                return;
+                throw new Error('Invalid param.time format');
             }
+            
+            console.log(`✅ [DEBUG] 时间转换成功: timeStr=${timeStr}, paramTimeNum=${paramTimeNum}`);
+            
         } catch (error) {
-            console.error('Error converting time:', error, 'param.time:', param.time);
+            console.error('❌ [DEBUG] 时间转换失败:', error, 'param.time:', param.time);
             this.updateInfoBarWithLatestData();
             return;
         }
         
-        let ohlcData = null;
-        let indicators = {};
+        // 收集所有股票的数据 - 只显示可见股票的价格数据
+        const allStockData = [];
+        this.stockInfos.forEach((stockInfo, index) => {
+            // 只处理可见的股票
+            if (stockInfo && stockInfo.data && this.stockVisibility[index] !== false) {
+                console.log(`🔍 [DEBUG] 查找可见股票 ${stockInfo.code} 的数据...`);
+                const stockOhlcData = this.findStockDataAtTime(stockInfo.data, paramTimeNum, timeStr);
+                if (stockOhlcData) {
+                    allStockData.push({
+                        ...stockOhlcData,
+                        stockInfo: stockInfo,
+                        index: index
+                    });
+                    console.log(`✅ [DEBUG] 可见股票 ${stockInfo.code} 找到数据:`, stockOhlcData.close);
+                } else {
+                    console.log(`❌ [DEBUG] 可见股票 ${stockInfo.code} 未找到数据`);
+                }
+            } else if (stockInfo && this.stockVisibility[index] === false) {
+                console.log(`⚪ [DEBUG] 跳过隐藏股票 ${stockInfo.code}`);
+            }
+        });
         
-        // 查找K线数据
-        if (this.stockInfos.length > 0 && this.stockInfos[0].data) {
-            ohlcData = this.stockInfos[0].data.find(item => item.time === timeStr);
-        }
+        console.log(`📊 [DEBUG] 总共找到 ${allStockData.length} 只股票的数据`);
         
         // 获取指标数据
+        let indicators = {};
         if (param.seriesData) {
             param.seriesData.forEach((seriesData, index) => {
                 if (seriesData && this.series[index]) {
@@ -1306,97 +1392,23 @@ class MainChart extends BaseChart {
             });
         }
         
-        // 收集所有股票的数据用于多股票显示
-        const allStockData = [];
-        this.stockInfos.forEach((stockInfo, index) => {
-            if (stockInfo && stockInfo.data && this.stockVisibility[index] !== false) {
-                const stockOhlcData = stockInfo.data.find(item => item.time === timeStr);
-                if (stockOhlcData) {
-                    allStockData.push({
-                        ...stockOhlcData,
-                        stockInfo: stockInfo,
-                        index: index
-                    });
-                }
-            }
-        });
-        
-        // 如果有多只股票，使用多股票渲染，否则使用单股票渲染
-        if (allStockData.length > 1) {
+        // 渲染信息栏
+        if (allStockData.length > 0) {
             this.renderMultiStockInfoBar(infoBar, allStockData, indicators, timeStr);
         } else {
-            this.renderInfoBar(infoBar, ohlcData, indicators, timeStr);
-        }
-    }
-    
-    /**
-     * 使用最新数据更新信息栏
-     */
-    updateInfoBarWithLatestData() {
-        const infoBar = this.createInfoBar();
-        
-        if (this.stockInfos.length === 0 || !this.stockInfos[0].data) {
-            infoBar.innerHTML = '<div style="color: #666;">暂无数据</div>';
-            return;
-        }
-        
-        const latestData = this.stockInfos[0].data[this.stockInfos[0].data.length - 1];
-        this.renderInfoBar(infoBar, latestData, {}, latestData.time);
-    }
-    
-    /**
-     * 渲染信息栏内容（股票列表和价格信息在同一行）
-     */
-    renderInfoBar(infoBar, ohlcData, indicators, timeStr) {
-        if (!ohlcData) {
+            // 即使没有找到数据，也要显示股票列表
             let html = this.renderStockListWithControls();
             html += `
                 <div style="color: #666; margin-top: 6px; font-size: 11px;">
-                    <span style="font-weight: bold;">${timeStr || '当前'}</span> - 暂无数据
+                    <span style="font-weight: bold;">${timeStr}</span> - 暂无数据
                 </div>
             `;
             infoBar.innerHTML = html;
-            return;
         }
-        
-        // 计算涨跌幅
-        const change = ohlcData.close - ohlcData.open;
-        const changePercent = ((change / ohlcData.open) * 100);
-        const changeColor = change >= 0 ? '#26a69a' : '#ef5350';
-        const changeSign = change >= 0 ? '+' : '';
-        
-        // 渲染股票列表和价格信息在同一行
-        let html = this.renderStockListWithPrices(ohlcData, timeStr);
-        
-        // 添加价格归一化控制
-        html += `
-            <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #eee;">
-                <label style="display: flex; align-items: center; cursor: pointer; font-size: 10px;">
-                    <input type="checkbox" ${this.normalizationEnabled ? 'checked' : ''} 
-                           onchange="window.toggleNormalization()" style="margin-right: 4px; transform: scale(0.8);">
-                    <span style="color: #666;">价格归一化</span>
-                </label>
-            </div>
-        `;
-        
-        // 添加指标信息
-        if (Object.keys(indicators).length > 0) {
-            html += `<div style="margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px;">`;
-            for (const [name, value] of Object.entries(indicators)) {
-                if (value !== null && value !== undefined) {
-                    const color = name.includes('Up') ? '#26a69a' : name.includes('Down') ? '#ef5350' : '#666';
-                    const shortName = name.replace(/HK\.\d+\s/, ''); // 简化指标名称
-                    html += `<span style="color: ${color};">${shortName}: ${value.toFixed(2)}</span>`;
-                }
-            }
-            html += `</div>`;
-        }
-        
-        infoBar.innerHTML = html;
     }
     
     /**
-     * 渲染股票列表部分（仅控制部分，用于无数据时）
+     * 渲染股票列表部分（仅控制部分，用于无数据时）- 只显示可见股票
      */
     renderStockListWithControls() {
         if (this.stockInfos.length === 0) {
@@ -1405,7 +1417,7 @@ class MainChart extends BaseChart {
         
         let html = '<div style="margin-bottom: 4px;">';
         
-        // 渲染股票列表
+        // 渲染股票列表 - 只显示可见股票的详细信息
         this.stockInfos.forEach((stockInfo, index) => {
             if (!stockInfo) return;
             
@@ -1420,8 +1432,14 @@ class MainChart extends BaseChart {
                     <span style="color: #333; font-weight: ${stockInfo.isMain ? 'bold' : 'normal'}; font-size: 10px;">
                         ${stockInfo.code}${stockInfo.isMain ? ' (主)' : ''}
                     </span>
-                </div>
             `;
+            
+            // 隐藏的股票显示"已隐藏"提示
+            if (!isVisible) {
+                html += `<span style="font-size: 9px; color: #999; margin-left: 8px;">已隐藏</span>`;
+            }
+            
+            html += `</div>`;
         });
         
         html += '</div>';
@@ -1429,7 +1447,7 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 渲染股票列表和价格信息在同一行
+     * 渲染股票列表和价格信息在同一行 - 增强版本
      */
     renderStockListWithPrices(ohlcData, timeStr) {
         if (this.stockInfos.length === 0) {
@@ -1476,7 +1494,7 @@ class MainChart extends BaseChart {
             
             html += `</div>`;
         } else {
-            // 多只股票时，先显示股票列表
+            // 多只股票时，先显示时间，然后只显示可见股票的价格信息
             html += `<div style="margin-bottom: 6px; font-size: 10px; color: #666; font-weight: bold;">${timeStr}</div>`;
             
             this.stockInfos.forEach((stockInfo, index) => {
@@ -1485,9 +1503,6 @@ class MainChart extends BaseChart {
                 const isVisible = this.stockVisibility[index] !== false;
                 const opacity = isVisible ? '1' : '0.5';
                 const textDecoration = isVisible ? 'none' : 'line-through';
-                
-                // 查找对应的价格数据
-                const stockOhlcData = stockInfo.data ? stockInfo.data.find(item => item.time === timeStr) : null;
                 
                 html += `
                     <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 3px; opacity: ${opacity}; text-decoration: ${textDecoration};">
@@ -1500,30 +1515,52 @@ class MainChart extends BaseChart {
                         </div>
                 `;
                 
-                                 if (stockOhlcData && isVisible) {
-                     const change = stockOhlcData.close - stockOhlcData.open;
-                     const changePercent = ((change / stockOhlcData.open) * 100);
-                     const changeColor = change >= 0 ? stockInfo.colorScheme.upColor : stockInfo.colorScheme.downColor;
-                     const changeSign = change >= 0 ? '+' : '';
-                     
-                     html += `
-                         <span style="font-size: 9px;">开: <strong>${stockOhlcData.open.toFixed(2)}</strong></span>
-                         <span style="font-size: 9px;">高: <strong style="color: ${stockInfo.colorScheme.upColor};">${stockOhlcData.high.toFixed(2)}</strong></span>
-                         <span style="font-size: 9px;">低: <strong style="color: ${stockInfo.colorScheme.downColor};">${stockOhlcData.low.toFixed(2)}</strong></span>
-                         <span style="font-size: 9px;">收: <strong>${stockOhlcData.close.toFixed(2)}</strong></span>
-                         <span style="color: ${changeColor}; font-size: 9px;">
-                             <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
-                         </span>
-                     `;
-                     
-                     // 添加换手率信息
-                     if (stockOhlcData.turnover_rate) {
-                         html += `<span style="color: #666; font-size: 9px;">换手率: ${(stockOhlcData.turnover_rate * 100).toFixed(2)}%</span>`;
-                     }
-                 } else if (!isVisible) {
-                    html += `<span style="font-size: 9px; color: #999;">已隐藏</span>`;
+                // 只显示可见股票的价格数据
+                if (isVisible) {
+                    // 查找对应的价格数据 - 增强查找逻辑
+                    let stockOhlcData = null;
+                    if (stockInfo.data) {
+                        // 如果传入的是单个股票数据，检查是否匹配当前股票
+                        if (ohlcData && this.stockInfos.length > 1) {
+                            // 多股票模式下，需要为每只股票单独查找数据
+                            const paramTimeNum = ChartUtils.convertTimeToNumber(timeStr);
+                            stockOhlcData = this.findStockDataAtTime(stockInfo.data, paramTimeNum, timeStr);
+                        } else if (ohlcData && index === 0) {
+                            // 单股票模式或主股票数据
+                            stockOhlcData = ohlcData;
+                        } else {
+                            // 其他情况，使用查找方法
+                            const paramTimeNum = ChartUtils.convertTimeToNumber(timeStr);
+                            stockOhlcData = this.findStockDataAtTime(stockInfo.data, paramTimeNum, timeStr);
+                        }
+                    }
+                    
+                    if (stockOhlcData) {
+                        const change = stockOhlcData.close - stockOhlcData.open;
+                        const changePercent = ((change / stockOhlcData.open) * 100);
+                        const changeColor = change >= 0 ? stockInfo.colorScheme.upColor : stockInfo.colorScheme.downColor;
+                        const changeSign = change >= 0 ? '+' : '';
+                        
+                        html += `
+                            <span style="font-size: 9px;">开: <strong>${stockOhlcData.open.toFixed(2)}</strong></span>
+                            <span style="font-size: 9px;">高: <strong style="color: ${stockInfo.colorScheme.upColor};">${stockOhlcData.high.toFixed(2)}</strong></span>
+                            <span style="font-size: 9px;">低: <strong style="color: ${stockInfo.colorScheme.downColor};">${stockOhlcData.low.toFixed(2)}</strong></span>
+                            <span style="font-size: 9px;">收: <strong>${stockOhlcData.close.toFixed(2)}</strong></span>
+                            <span style="color: ${changeColor}; font-size: 9px;">
+                                <strong>${changeSign}${change.toFixed(2)} (${changeSign}${changePercent.toFixed(2)}%)</strong>
+                            </span>
+                        `;
+                        
+                        // 添加换手率信息
+                        if (stockOhlcData.turnover_rate) {
+                            html += `<span style="color: #666; font-size: 9px;">换手率: ${(stockOhlcData.turnover_rate * 100).toFixed(2)}%</span>`;
+                        }
+                    } else {
+                        html += `<span style="font-size: 9px; color: #999;">无数据</span>`;
+                    }
                 } else {
-                    html += `<span style="font-size: 9px; color: #999;">无数据</span>`;
+                    // 隐藏的股票只显示"已隐藏"提示
+                    html += `<span style="font-size: 9px; color: #999; margin-left: 8px;">已隐藏</span>`;
                 }
                 
                 html += `</div>`;
@@ -1535,7 +1572,7 @@ class MainChart extends BaseChart {
     }
     
     /**
-     * 渲染多股票信息栏内容（股票列表和价格信息在同一行）
+     * 渲染多股票信息栏内容 - 增强版本
      */
     renderMultiStockInfoBar(infoBar, allStockData, indicators, timeStr) {
         if (!allStockData || allStockData.length === 0) {
@@ -1549,7 +1586,9 @@ class MainChart extends BaseChart {
             return;
         }
         
-        // 直接使用新的渲染方法
+        console.log(`📊 [DEBUG] 渲染多股票信息栏，股票数量: ${allStockData.length}`);
+        
+        // 使用增强的渲染方法，传入第一只股票的数据作为参考
         const firstStockData = allStockData[0];
         let html = this.renderStockListWithPrices(firstStockData, timeStr);
         
@@ -1578,6 +1617,7 @@ class MainChart extends BaseChart {
         }
         
         infoBar.innerHTML = html;
+        console.log(`✅ [DEBUG] 多股票信息栏渲染完成`);
     }
     
     /**
@@ -2197,7 +2237,14 @@ class MainChart extends BaseChart {
         // 适配内容到数据范围（仅在首次加载时）
         if (this.chart && !this._hasInitialFit) {
             try {
+                // 首先使用默认的fitContent
                 this.chart.timeScale().fitContent();
+                
+                // 然后调整到可见股票的范围
+                setTimeout(() => {
+                    this.adjustTimeRangeToVisibleStocks();
+                }, 100);
+                
                 this._hasInitialFit = true;
                 console.log('📊 MainChart 数据加载完成，已适配内容');
             } catch (error) {
@@ -2597,6 +2644,147 @@ class MainChart extends BaseChart {
         } catch (error) {
             console.error('❌ MainChart 销毁失败:', error);
         }
+    }
+    
+    /**
+     * 使用最新数据更新信息栏
+     */
+    updateInfoBarWithLatestData() {
+        const infoBar = this.createInfoBar();
+        
+        if (this.stockInfos.length === 0 || !this.stockInfos[0].data) {
+            infoBar.innerHTML = '<div style="color: #666;">暂无数据</div>';
+            return;
+        }
+        
+        const latestData = this.stockInfos[0].data[this.stockInfos[0].data.length - 1];
+        this.renderInfoBar(infoBar, latestData, {}, latestData.time);
+    }
+    
+    /**
+     * 渲染信息栏内容（股票列表和价格信息在同一行）
+     */
+    renderInfoBar(infoBar, ohlcData, indicators, timeStr) {
+        if (!ohlcData) {
+            let html = this.renderStockListWithControls();
+            html += `
+                <div style="color: #666; margin-top: 6px; font-size: 11px;">
+                    <span style="font-weight: bold;">${timeStr || '当前'}</span> - 暂无数据
+                </div>
+            `;
+            infoBar.innerHTML = html;
+            return;
+        }
+        
+        // 计算涨跌幅
+        const change = ohlcData.close - ohlcData.open;
+        const changePercent = ((change / ohlcData.open) * 100);
+        const changeColor = change >= 0 ? '#26a69a' : '#ef5350';
+        const changeSign = change >= 0 ? '+' : '';
+        
+        // 渲染股票列表和价格信息在同一行
+        let html = this.renderStockListWithPrices(ohlcData, timeStr);
+        
+        // 添加价格归一化控制
+        html += `
+            <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #eee;">
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 10px;">
+                    <input type="checkbox" ${this.normalizationEnabled ? 'checked' : ''} 
+                           onchange="window.toggleNormalization()" style="margin-right: 4px; transform: scale(0.8);">
+                    <span style="color: #666;">价格归一化</span>
+                </label>
+            </div>
+        `;
+        
+        // 添加指标信息
+        if (Object.keys(indicators).length > 0) {
+            html += `<div style="margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px;">`;
+            for (const [name, value] of Object.entries(indicators)) {
+                if (value !== null && value !== undefined) {
+                    const color = name.includes('Up') ? '#26a69a' : name.includes('Down') ? '#ef5350' : '#666';
+                    const shortName = name.replace(/HK\.\d+\s/, ''); // 简化指标名称
+                    html += `<span style="color: ${color};">${shortName}: ${value.toFixed(2)}</span>`;
+                }
+            }
+            html += `</div>`;
+        }
+        
+        infoBar.innerHTML = html;
+    }
+    
+    /**
+     * 在股票数据中查找指定时间的数据 - 增强版本
+     */
+    findStockDataAtTime(stockData, paramTimeNum, timeStr) {
+        if (!stockData || !Array.isArray(stockData) || stockData.length === 0) {
+            return null;
+        }
+        
+        console.log(`🔍 [DEBUG] 查找数据: paramTimeNum=${paramTimeNum}, timeStr=${timeStr}, 数据长度=${stockData.length}`);
+        
+        // 方法1: 精确时间戳匹配（扩大容差到30秒）
+        let stockOhlcData = stockData.find(item => {
+            const itemTimeNum = ChartUtils.convertTimeToNumber(item.time);
+            const diff = Math.abs(itemTimeNum - paramTimeNum);
+            return diff < 30; // 30秒容差
+        });
+        
+        if (stockOhlcData) {
+            console.log(`✅ [DEBUG] 精确匹配成功`);
+            return stockOhlcData;
+        }
+        
+        // 方法2: 字符串时间匹配
+        stockOhlcData = stockData.find(item => {
+            if (typeof item.time === 'string') {
+                return item.time === timeStr || item.time.startsWith(timeStr);
+            }
+            return false;
+        });
+        
+        if (stockOhlcData) {
+            console.log(`✅ [DEBUG] 字符串匹配成功`);
+            return stockOhlcData;
+        }
+        
+        // 方法3: 日期字符串匹配（处理时间戳转换）
+        stockOhlcData = stockData.find(item => {
+            const itemTimeNum = ChartUtils.convertTimeToNumber(item.time);
+            if (!isNaN(itemTimeNum)) {
+                const itemDateStr = new Date(itemTimeNum * 1000).toISOString().split('T')[0];
+                return itemDateStr === timeStr;
+            }
+            return false;
+        });
+        
+        if (stockOhlcData) {
+            console.log(`✅ [DEBUG] 日期字符串匹配成功`);
+            return stockOhlcData;
+        }
+        
+        // 方法4: 最接近时间点匹配（扩大到3天容差）
+        let closestData = null;
+        let minDiff = Infinity;
+        
+        stockData.forEach(item => {
+            const itemTimeNum = ChartUtils.convertTimeToNumber(item.time);
+            if (!isNaN(itemTimeNum)) {
+                const diff = Math.abs(itemTimeNum - paramTimeNum);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestData = item;
+                }
+            }
+        });
+        
+        // 只有时间差在3天内才使用
+        if (closestData && minDiff <= 259200) { // 259200秒 = 3天
+            console.log(`✅ [DEBUG] 最接近匹配成功，时间差: ${minDiff}秒`);
+            return closestData;
+        }
+        
+        console.log(`❌ [DEBUG] 所有匹配方法都失败`);
+        return null;
     }
 }
 
