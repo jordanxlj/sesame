@@ -212,6 +212,24 @@ const ChartConfig = {
         }
     },
     
+    // 统一时间轴配置（确保所有图表完全一致，解决对齐问题）
+    UNIFIED_TIME_SCALE: {
+        visible: true,
+        timeVisible: true,
+        secondsVisible: false,
+        borderVisible: true,
+        rightOffset: 12,        // 固定右偏移
+        barSpacing: 6,          // 固定柱间距
+        fixLeftEdge: false,     // 不固定左边缘
+        fixRightEdge: false,    // 不固定右边缘
+        lockVisibleTimeRangeOnResize: false,  // 不锁定时间范围
+        shiftVisibleRangeOnNewBar: false,     // 不自动移动范围
+        borderColor: '#e0e0e0',
+        rightBarStaysOnScroll: true,
+        // 防止自动调整导致偏移
+        allowShiftVisibleRangeOnWhitespaceReplacement: false
+    },
+    
     // 验证配置完整性
     validate() {
         const requiredFields = ['DEFAULT_OPTIONS', 'MAIN_CHART', 'VOLUME_CHART', 'INDICATOR_CHART', 'COLORS'];
@@ -233,6 +251,11 @@ const ChartConfig = {
             timeScale: { ...baseConfig.timeScale, ...typeConfig.timeScale },
             rightPriceScale: { ...baseConfig.rightPriceScale, ...typeConfig.priceScale }
         };
+    },
+    
+    // 获取统一的时间轴配置（确保所有图表使用相同设置）
+    getUnifiedTimeScale() {
+        return { ...this.UNIFIED_TIME_SCALE };
     }
 };
 
@@ -564,16 +587,11 @@ class BaseChart extends EventEmitter {
         if (!this.chart) return;
         
         try {
-            const timeScaleOptions = {
-                rightOffset: 12,
-                barSpacing: 6,
-                fixLeftEdge: false,
-                fixRightEdge: false,
-                lockVisibleTimeRangeOnResize: false
-            };
+            // 使用统一的时间轴配置，确保所有图表完全一致
+            const unifiedTimeScale = ChartConfig.getUnifiedTimeScale();
             
-            console.log(`🔧 [DEBUG] 应用时间轴配置: ${this.id}`, timeScaleOptions);
-            this.chart.timeScale().applyOptions(timeScaleOptions);
+            console.log(`🔧 [DEBUG] 应用统一时间轴配置: ${this.id}`, unifiedTimeScale);
+            this.chart.timeScale().applyOptions(unifiedTimeScale);
             
             // 获取当前时间轴配置进行验证
             const currentOptions = this.chart.timeScale().options();
@@ -585,9 +603,9 @@ class BaseChart extends EventEmitter {
                 rightOffset: currentOptions.rightOffset
             });
             
-            console.log(`📐 无留白模式已设置: ${this.id}`);
+            console.log(`📐 统一时间轴配置已设置: ${this.id}`);
         } catch (error) {
-            console.warn(`设置无留白模式失败: ${this.id}`, error);
+            console.warn(`设置统一时间轴配置失败: ${this.id}`, error);
         }
     }
     
@@ -992,20 +1010,6 @@ class MainChart extends BaseChart {
             console.log('🔧 [DEBUG] 配置主价格轴:', rightPriceScaleOptions);
             this.chart.priceScale('right').applyOptions(rightPriceScaleOptions);
             
-            // Squeeze指标价格轴配置
-            const squeezePriceScaleOptions = {
-                scaleMargins: { top: 0.82, bottom: 0.0 },   // Squeeze占底部18%
-                alignLabels: true,
-                borderVisible: true,
-                borderColor: '#B0B0B0',  // 更深的边框颜色
-                autoScale: true,
-                mode: 0,
-                minimumWidth: 80  // 统一最小宽度
-            };
-            
-            console.log('🔧 [DEBUG] 配置Squeeze价格轴:', squeezePriceScaleOptions);
-            this.chart.priceScale('squeeze').applyOptions(squeezePriceScaleOptions);
-            
             // 再次检查时间轴配置
             const timeScaleOptions = this.chart.timeScale().options();
             console.log('🔍 [DEBUG] 价格轴配置后的时间轴状态:', {
@@ -1064,6 +1068,9 @@ class MainChart extends BaseChart {
         
         // 同步时间轴到Squeeze子图
         this.syncTimeRangeToSqueezeChart(timeRange);
+        
+        // 同步 barSpacing 到子图，保证柱宽一致
+        this.syncBarSpacingToSubCharts();
     }
     
     /**
@@ -3097,6 +3104,12 @@ class MainChart extends BaseChart {
             // 加载成交量数据
             await this.volumeChart.loadVolumeData(mainStockCode);
             
+            // 加载完成后立即同步时间范围，确保初始对齐
+            const currentRange = this.getTimeRange();
+            if (currentRange) {
+                this.volumeChart.setTimeRange(currentRange);
+            }
+            
             console.log(`✅ 主股票 ${mainStockCode} 成交量数据已加载到子图`);
             
         } catch (error) {
@@ -3270,6 +3283,29 @@ class MainChart extends BaseChart {
             console.error('❌ 销毁Squeeze子图失败:', error);
         }
     }
+    
+    /**
+     * 同步主图的 barSpacing 到所有子图，确保柱宽一致
+     */
+    syncBarSpacingToSubCharts() {
+        if (!this.chart) return;
+        try {
+            const spacing = this.chart.timeScale().options().barSpacing;
+            if (!spacing || isNaN(spacing)) return;
+            
+            const applySpacing = (subChart) => {
+                if (subChart && subChart.chart) {
+                    // 对于成交量子图，适当缩小柱宽以匹配蜡烛间隔视觉效果
+                    subChart.chart.timeScale().applyOptions({ barSpacing: spacing });
+                }
+            };
+            
+            applySpacing(this.volumeChart);
+            applySpacing(this.squeezeChart);
+        } catch (error) {
+            console.warn('同步子图 barSpacing 失败:', error);
+        }
+    }
 }
 
 // ================================
@@ -3277,7 +3313,8 @@ class MainChart extends BaseChart {
 // ================================
 class VolumeChart extends BaseChart {
     constructor(container) {
-        super(container, ChartConfig.getChartConfig('volume'));
+        super(container, { ...ChartConfig.getChartConfig('volume'),   chartType: 'volume'   });
+
         
         // 成交量图特有属性
         this.volumeSeries = null;
@@ -3319,14 +3356,10 @@ class VolumeChart extends BaseChart {
             console.log('🔧 [DEBUG] 配置成交量价格轴:', volumePriceScaleOptions);
             this.chart.priceScale('right').applyOptions(volumePriceScaleOptions);
             
-            // 确保时间轴配置与主图一致
-            this.chart.timeScale().applyOptions({
-                rightOffset: 12,
-                barSpacing: 6,
-                fixLeftEdge: false,
-                fixRightEdge: false,
-                lockVisibleTimeRangeOnResize: false
-            });
+            // 使用统一的时间轴配置，确保与主图完全对齐
+            const unifiedTimeScale = ChartConfig.getUnifiedTimeScale();
+            console.log('🔧 [DEBUG] 成交量图应用统一时间轴:', unifiedTimeScale);
+            this.chart.timeScale().applyOptions(unifiedTimeScale);
             
             console.log('✅ 成交量价格轴已配置完成');
         } catch (error) {
@@ -3414,14 +3447,16 @@ class VolumeChart extends BaseChart {
         const volumeData = [];
         
         ohlcData.forEach(item => {
-            if (item && item.time && item.volume !== undefined && item.volume !== null) {
-                // 根据涨跌情况设置颜色
+            if (item && item.time) {
+                let vol = 0;
+                if (item.volume !== undefined && item.volume !== null && isFinite(item.volume)) {
+                    vol = item.volume;
+                }
                 const color = item.close >= item.open ? '#26a69a' : '#ef5350';
-                
                 volumeData.push({
                     time: item.time,
-                    value: item.volume,
-                    color: color
+                    value: vol,
+                    color: vol === 0 ? 'rgba(0,0,0,0)' : color // 隐藏0值柱子但保持时间点
                 });
             }
         });
@@ -3483,7 +3518,7 @@ class VolumeChart extends BaseChart {
 // ================================
 class SqueezeChart extends BaseChart {
     constructor(container) {
-        super(container, ChartConfig.getChartConfig('indicator'));
+        super(container, { ...ChartConfig.getChartConfig('indicator'), chartType: 'indicator'});
         
         // Squeeze图特有属性
         this.momentumSeries = null;
@@ -3529,14 +3564,10 @@ class SqueezeChart extends BaseChart {
             console.log('🔧 [DEBUG] 配置Squeeze价格轴:', squeezePriceScaleOptions);
             this.chart.priceScale('right').applyOptions(squeezePriceScaleOptions);
             
-            // 确保时间轴配置与主图一致
-            this.chart.timeScale().applyOptions({
-                rightOffset: 12,
-                barSpacing: 6,
-                fixLeftEdge: false,
-                fixRightEdge: false,
-                lockVisibleTimeRangeOnResize: false
-            });
+            // 使用统一的时间轴配置，确保与主图完全对齐
+            const unifiedTimeScale = ChartConfig.getUnifiedTimeScale();
+            console.log('🔧 [DEBUG] Squeeze图应用统一时间轴:', unifiedTimeScale);
+            this.chart.timeScale().applyOptions(unifiedTimeScale);
             
             console.log('✅ Squeeze价格轴已配置完成');
         } catch (error) {
