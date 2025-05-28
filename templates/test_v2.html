@@ -319,6 +319,36 @@
                 </div>
             </div>
         </div>
+        
+        <!-- 成交量子图测试 -->
+        <div class="test-section">
+            <h3>📊 成交量子图测试</h3>
+            <p class="test-info">测试成交量子图的创建、数据加载和时间轴同步功能</p>
+            
+            <div class="controls">
+                <button class="test-btn" onclick="createVolumeTest()">创建主图+成交量子图</button>
+                <button class="test-btn" onclick="loadVolumeTestData()">加载测试数据</button>
+                <button class="test-btn" onclick="toggleVolumeChart()">切换成交量子图</button>
+                <button class="test-btn" onclick="clearVolumeTest()">清空测试</button>
+            </div>
+            
+            <div id="volume-test-status" class="test-status">
+                等待测试...
+            </div>
+            
+            <!-- 主图容器 -->
+            <div id="volume-main-chart" class="chart-container"></div>
+            
+            <!-- 成交量子图会自动添加到这里 -->
+            
+            <div class="test-result info">
+                <strong>测试说明：</strong><br>
+                • 成交量子图只显示主股票（第一只股票）的成交量数据<br>
+                • 成交量柱状图根据涨跌情况显示不同颜色（绿色上涨，红色下跌）<br>
+                • 时间轴与主图自动同步<br>
+                • 支持独立的缩放和平移操作
+            </div>
+        </div>
     </div>
 
     <!-- 引入LightweightCharts库 -->
@@ -865,7 +895,7 @@
                 const indicators = includeIndicators ? ['supertrend'] : []; // 重点测试SuperTrend指标
                 
                 // 多股票测试数据
-                const codes = ['HK.02432', 'HK.09660']; // 测试多个股票代码
+                const codes = ['HK.02432', 'HK.09660', 'HK.01810']; // 测试多个股票代码
                 
                 updateStatus('multiStockStatus', '⏳ 正在加载多股票数据...');
                 addLog('开始加载多股票数据', 'info');
@@ -1017,6 +1047,124 @@
                 }
             } else {
                 addLog('error', 'LightweightCharts未加载');
+            }
+        }
+
+        // ================================
+        // 成交量子图测试
+        // ================================
+        let volumeMainChart = null;
+        let volumeTestContainer = null;
+        
+        function updateVolumeTestStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('volume-test-status');
+            statusDiv.textContent = message;
+            statusDiv.className = `test-status ${type}`;
+            addLog(`[成交量测试] ${message}`, type);
+        }
+        
+        async function createVolumeTest() {
+            try {
+                updateVolumeTestStatus('正在创建主图和成交量子图...', 'info');
+                
+                // 清理现有测试
+                if (volumeMainChart) {
+                    volumeMainChart.destroy();
+                    volumeMainChart = null;
+                }
+                
+                // 获取主图容器
+                const mainContainer = document.getElementById('volume-main-chart');
+                mainContainer.innerHTML = '';
+                
+                // 创建主图
+                volumeMainChart = new MainChart(mainContainer);
+                volumeMainChart.create();
+                
+                // 创建成交量子图
+                volumeTestContainer = mainContainer.parentElement;
+                volumeMainChart.createVolumeSubChart(volumeTestContainer);
+                
+                updateVolumeTestStatus('主图和成交量子图创建完成', 'success');
+                
+            } catch (error) {
+                console.error('创建成交量测试失败:', error);
+                updateVolumeTestStatus('创建失败: ' + error.message, 'error');
+            }
+        }
+        
+        async function loadVolumeTestData() {
+            if (!volumeMainChart) {
+                updateVolumeTestStatus('请先创建图表', 'error');
+                return;
+            }
+            
+            try {
+                updateVolumeTestStatus('正在加载测试数据...', 'info');
+                
+                // 加载单只股票数据（用于测试成交量）
+                const codes = ['HK.01810']; // 只加载一只股票
+                const indicators = ['supertrend', 'ma5'];
+                
+                await volumeMainChart.loadData(codes, indicators);
+                
+                updateVolumeTestStatus('测试数据加载完成，成交量子图已同步', 'success');
+                
+            } catch (error) {
+                console.error('加载成交量测试数据失败:', error);
+                updateVolumeTestStatus('数据加载失败: ' + error.message, 'error');
+            }
+        }
+        
+        function toggleVolumeChart() {
+            if (!volumeMainChart) {
+                updateVolumeTestStatus('请先创建图表', 'error');
+                return;
+            }
+            
+            try {
+                if (volumeMainChart.volumeChart) {
+                    // 销毁成交量子图
+                    volumeMainChart.destroyVolumeSubChart();
+                    updateVolumeTestStatus('成交量子图已隐藏', 'info');
+                } else {
+                    // 重新创建成交量子图
+                    volumeMainChart.createVolumeSubChart(volumeTestContainer);
+                    // 如果有数据，重新加载
+                    if (volumeMainChart.stockInfos.length > 0) {
+                        setTimeout(() => {
+                            volumeMainChart.loadVolumeDataToSubChart();
+                        }, 100);
+                    }
+                    updateVolumeTestStatus('成交量子图已显示', 'success');
+                }
+            } catch (error) {
+                console.error('切换成交量子图失败:', error);
+                updateVolumeTestStatus('切换失败: ' + error.message, 'error');
+            }
+        }
+        
+        function clearVolumeTest() {
+            try {
+                if (volumeMainChart) {
+                    volumeMainChart.destroy();
+                    volumeMainChart = null;
+                }
+                
+                const mainContainer = document.getElementById('volume-main-chart');
+                mainContainer.innerHTML = '';
+                
+                // 清理可能残留的成交量容器
+                const volumeContainer = document.getElementById('volume-chart-container');
+                if (volumeContainer && volumeContainer.parentNode) {
+                    volumeContainer.parentNode.removeChild(volumeContainer);
+                }
+                
+                updateVolumeTestStatus('测试已清空', 'info');
+                
+            } catch (error) {
+                console.error('清空成交量测试失败:', error);
+                updateVolumeTestStatus('清空失败: ' + error.message, 'error');
             }
         }
     </script>

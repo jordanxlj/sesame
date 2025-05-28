@@ -868,6 +868,10 @@ class MainChart extends BaseChart {
         this.stockVisibility = []; // 股票可见性状态
         this.legendContainer = null; // 图例容器
         
+        // 成交量子图相关
+        this.volumeChart = null;
+        this.volumeContainer = null;
+        
         // 注册为主图
         ChartRegistry.register(this.id, this, true);
         
@@ -977,6 +981,9 @@ class MainChart extends BaseChart {
             timeRange: timeRange,
             chartId: this.id
         });
+        
+        // 同步时间轴到成交量子图
+        this.syncTimeRangeToVolumeChart(timeRange);
     }
     
     /**
@@ -2288,6 +2295,11 @@ class MainChart extends BaseChart {
         setTimeout(() => {
             this.updateInfoBarWithLatestData();
         }, 100);
+        
+        // 加载成交量数据到子图
+        setTimeout(() => {
+            this.loadVolumeDataToSubChart();
+        }, 200);
     }
     
     /**
@@ -2654,6 +2666,9 @@ class MainChart extends BaseChart {
      */
     destroy() {
         try {
+            // 销毁成交量子图
+            this.destroyVolumeSubChart();
+            
             // 注销图表
             ChartRegistry.unregister(this.id);
             
@@ -2916,6 +2931,319 @@ class MainChart extends BaseChart {
         console.log(`📊 智能归一化：已${this.normalizationEnabled ? '启用' : '禁用'}`);
         return true; // 返回true表示成功切换
     }
+    
+    /**
+     * 创建成交量子图
+     */
+    createVolumeSubChart(parentContainer) {
+        try {
+            // 创建成交量容器
+            this.volumeContainer = document.createElement('div');
+            this.volumeContainer.id = 'volume-chart-container';
+            this.volumeContainer.style.cssText = `
+                width: 100%;
+                height: 150px;
+                margin-top: 10px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background: white;
+            `;
+            
+            // 添加标题
+            const titleDiv = document.createElement('div');
+            titleDiv.style.cssText = `
+                padding: 5px 10px;
+                background: #f8f9fa;
+                border-bottom: 1px solid #ddd;
+                font-size: 12px;
+                font-weight: bold;
+                color: #666;
+            `;
+            titleDiv.textContent = '成交量';
+            this.volumeContainer.appendChild(titleDiv);
+            
+            // 创建图表容器
+            const chartDiv = document.createElement('div');
+            chartDiv.style.cssText = `
+                width: 100%;
+                height: 120px;
+            `;
+            this.volumeContainer.appendChild(chartDiv);
+            
+            // 添加到父容器
+            parentContainer.appendChild(this.volumeContainer);
+            
+            // 创建成交量图表
+            this.volumeChart = new VolumeChart(chartDiv);
+            this.volumeChart.create();
+            
+            // 添加到子图列表
+            this.addSubChart(this.volumeChart);
+            
+            console.log('✅ 成交量子图创建完成');
+            return this.volumeChart;
+            
+        } catch (error) {
+            console.error('❌ 创建成交量子图失败:', error);
+            return null;
+        }
+    }
+    
+    /**
+     * 加载主股票的成交量数据到子图
+     */
+    async loadVolumeDataToSubChart() {
+        if (!this.volumeChart || this.stockInfos.length === 0) {
+            console.warn('⚠️ 成交量子图未创建或无股票数据');
+            return;
+        }
+        
+        try {
+            // 获取主股票（第一只股票）的代码
+            const mainStockCode = this.stockInfos[0].code;
+            
+            // 加载成交量数据
+            await this.volumeChart.loadVolumeData(mainStockCode);
+            
+            console.log(`✅ 主股票 ${mainStockCode} 成交量数据已加载到子图`);
+            
+        } catch (error) {
+            console.error('❌ 加载成交量数据到子图失败:', error);
+        }
+    }
+    
+    /**
+     * 同步时间轴到成交量子图
+     */
+    syncTimeRangeToVolumeChart(timeRange) {
+        if (this.volumeChart && timeRange) {
+            // 检查成交量子图是否有数据系列，避免不必要的警告
+            if (this.volumeChart.series && this.volumeChart.series.length > 0) {
+                this.volumeChart.setTimeRange(timeRange);
+            } else {
+                // 如果成交量子图还没有数据系列，延迟同步
+                setTimeout(() => {
+                    if (this.volumeChart && this.volumeChart.series && this.volumeChart.series.length > 0) {
+                        this.volumeChart.setTimeRange(timeRange);
+                    }
+                }, 100);
+            }
+        }
+    }
+    
+    /**
+     * 销毁成交量子图
+     */
+    destroyVolumeSubChart() {
+        try {
+            if (this.volumeChart) {
+                this.volumeChart.destroy();
+                this.volumeChart = null;
+            }
+            
+            if (this.volumeContainer && this.volumeContainer.parentNode) {
+                this.volumeContainer.parentNode.removeChild(this.volumeContainer);
+                this.volumeContainer = null;
+            }
+            
+            console.log('✅ 成交量子图已销毁');
+            
+        } catch (error) {
+            console.error('❌ 销毁成交量子图失败:', error);
+        }
+    }
+}
+
+// ================================
+// Volume Chart Class
+// ================================
+class VolumeChart extends BaseChart {
+    constructor(container) {
+        super(container, ChartConfig.getChartConfig('volume'));
+        
+        // 成交量图特有属性
+        this.volumeSeries = null;
+        this.mainStockData = null;
+        
+        console.log(`📊 VolumeChart 已创建: ${this.id}`);
+    }
+    
+    onCreated() {
+        console.log('🚀 VolumeChart.onCreated() 开始初始化...');
+        
+        // 设置成交量图的价格轴配置
+        this.setupVolumeScale();
+        
+        console.log('✅ VolumeChart 初始化完成');
+    }
+    
+    /**
+     * 设置成交量价格轴
+     */
+    setupVolumeScale() {
+        try {
+            const volumePriceScaleOptions = {
+                scaleMargins: { top: 0.1, bottom: 0.1 },
+                alignLabels: true,
+                borderVisible: true,
+                autoScale: true,
+                mode: 0, // 正常模式
+                priceFormat: {
+                    type: 'volume'
+                }
+            };
+            
+            console.log('🔧 [DEBUG] 配置成交量价格轴:', volumePriceScaleOptions);
+            this.chart.priceScale('right').applyOptions(volumePriceScaleOptions);
+            
+            console.log('✅ 成交量价格轴已配置完成');
+        } catch (error) {
+            console.error('❌ 成交量价格轴配置失败:', error);
+        }
+    }
+    
+    /**
+     * 加载主股票的成交量数据
+     */
+    async loadVolumeData(stockCode) {
+        try {
+            console.log(`📊 开始加载成交量数据: ${stockCode}`);
+            
+            // 获取K线数据（包含成交量）
+            const response = await fetch(`/api/kline?code=${stockCode}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const ohlcData = await response.json();
+            
+            if (!ohlcData || !Array.isArray(ohlcData) || ohlcData.length === 0) {
+                console.error(`❌ ${stockCode}: 成交量数据无效`);
+                return;
+            }
+            
+            // 存储主股票数据
+            this.mainStockData = ohlcData;
+            
+            // 创建成交量系列
+            this.createVolumeSeries(ohlcData);
+            
+            console.log(`✅ 成交量数据加载完成: ${stockCode}`);
+            
+        } catch (error) {
+            console.error(`❌ 加载成交量数据失败: ${stockCode}`, error);
+            throw error;
+        }
+    }
+    
+    /**
+     * 创建成交量系列
+     */
+    createVolumeSeries(ohlcData) {
+        try {
+            // 处理成交量数据
+            const volumeData = this.processVolumeData(ohlcData);
+            
+            if (volumeData.length === 0) {
+                console.warn('⚠️ 没有有效的成交量数据');
+                return;
+            }
+            
+            // 创建成交量柱状图系列
+            this.volumeSeries = this.addSeries('histogram', {
+                priceScaleId: 'right',
+                priceFormat: {
+                    type: 'volume'
+                },
+                color: '#26a69a',
+                priceLineVisible: false,
+                lastValueVisible: true
+            });
+            
+            if (!this.volumeSeries) {
+                console.error('❌ 成交量系列创建失败');
+                return;
+            }
+            
+            // 设置成交量数据
+            this.volumeSeries.setData(volumeData);
+            
+            console.log(`✅ 成交量系列创建完成，数据点: ${volumeData.length}`);
+            
+        } catch (error) {
+            console.error('❌ 创建成交量系列失败:', error);
+        }
+    }
+    
+    /**
+     * 处理成交量数据
+     */
+    processVolumeData(ohlcData) {
+        const volumeData = [];
+        
+        ohlcData.forEach(item => {
+            if (item && item.time && item.volume !== undefined && item.volume !== null) {
+                // 根据涨跌情况设置颜色
+                const color = item.close >= item.open ? '#26a69a' : '#ef5350';
+                
+                volumeData.push({
+                    time: item.time,
+                    value: item.volume,
+                    color: color
+                });
+            }
+        });
+        
+        console.log(`📊 成交量数据处理完成: ${volumeData.length} 个数据点`);
+        return volumeData;
+    }
+    
+    /**
+     * 更新成交量数据
+     */
+    updateVolumeData(newData) {
+        if (this.volumeSeries && newData) {
+            const volumeData = this.processVolumeData(newData);
+            this.volumeSeries.setData(volumeData);
+            console.log('📊 成交量数据已更新');
+        }
+    }
+    
+    /**
+     * 清空成交量数据
+     */
+    clearVolumeData() {
+        if (this.volumeSeries) {
+            this.volumeSeries.setData([]);
+        }
+        this.mainStockData = null;
+        console.log('📊 成交量数据已清空');
+    }
+    
+    /**
+     * 获取源名称
+     */
+    getSourceName() {
+        return 'volume';
+    }
+    
+    /**
+     * 销毁图表
+     */
+    destroy() {
+        try {
+            this.volumeSeries = null;
+            this.mainStockData = null;
+            
+            // 调用父类销毁方法
+            super.destroy();
+            
+            console.log(`📊 VolumeChart 已销毁: ${this.id}`);
+            
+        } catch (error) {
+            console.error('❌ VolumeChart 销毁失败:', error);
+        }
+    }
 }
 
 // ================================
@@ -2934,6 +3262,7 @@ window.EventEmitter = EventEmitter;
 window.ChartRegistry = ChartRegistry;
 window.BaseChart = BaseChart;
 window.MainChart = MainChart;
+window.VolumeChart = VolumeChart;
 
 // 全局回调函数，用于图例交互
 window.toggleStock = function(index) {
