@@ -473,6 +473,10 @@
                 // 使用 MainChart 的 loadData 方法
                 await mainChart.loadData(['HK.01810'], ['supertrend', 'ma5', 'ma10']);
                 
+                // 同时加载成交量数据到 VolumeChart
+                console.log('📊 开始加载成交量数据到 VolumeChart...');
+                await volumeChart.loadVolumeData('HK.01810');
+                
                 // 记录数据加载后的逻辑范围
                 setTimeout(() => {
                     const afterDataLogical = mainChart.chart.timeScale().getVisibleLogicalRange();
@@ -524,6 +528,10 @@
                 // 加载多只股票数据（包括 01810）
                 const stocks = ['HK.09660', 'HK.01810', 'HK.02432'];
                 await mainChart.loadData(stocks, ['supertrend']);
+                
+                // 加载主股票（第一只股票）的成交量数据
+                console.log('📊 开始加载主股票成交量数据到 VolumeChart...');
+                await volumeChart.loadVolumeData(stocks[0]); // 加载第一只股票的成交量
                 
                 console.log('✅ 多股票数据加载完成');
                 
