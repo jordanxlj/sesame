@@ -2028,7 +2028,7 @@ class MainChart extends BaseChart {
             console.log(`📈 加载股票数据: ${code} (索引${index})`);
             
             // 获取K线数据
-            const response = await fetch(`/api/kline?code=${code}`);
+            const response = await fetch(`http://localhost:5000/api/kline?code=${code}`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -2184,7 +2184,8 @@ class MainChart extends BaseChart {
         try {
             console.log(`📊 加载指标: ${indicator} for ${code} (股票${stockIndex})`);
             
-            const response = await fetch(`/api/indicator?code=${code}&type=${indicator}`);
+            // 获取Squeeze指标数据
+            const response = await fetch(`http://localhost:5000/api/indicator?code=${code}&type=squeeze_momentum`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -3983,7 +3984,7 @@ class VolumeChart extends BaseChart {
             console.log(`📊 开始加载成交量数据: ${stockCode}`);
             
             // 获取K线数据（包含成交量）
-            const response = await fetch(`/api/kline?code=${stockCode}`);
+            const response = await fetch(`http://localhost:5000/api/kline?code=${stockCode}`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -4220,7 +4221,7 @@ class SqueezeChart extends BaseChart {
             console.log(`📊 开始加载Squeeze Momentum数据: ${stockCode}`);
             
             // 获取Squeeze指标数据
-            const response = await fetch(`/api/indicator?code=${stockCode}&type=squeeze_momentum`);
+            const response = await fetch(`http://localhost:5000/api/indicator?code=${stockCode}&type=squeeze_momentum`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }

@@ -92,7 +92,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo [INFO] 📦 安装应用依赖...
-pip install Flask==2.3.3 pandas>=2.0.0 numpy>=1.24.0 scipy>=1.11.0 --quiet
+REM pip install Flask==2.3.3 pandas>=2.0.0 numpy>=1.24.0 scipy>=1.11.0 --quiet
 
 if %ERRORLEVEL% NEQ 0 (
     echo [WARN] 依赖安装可能有问题，但继续尝试启动...

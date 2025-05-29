@@ -63,10 +63,18 @@
             <button onclick="logCurrentState()">记录当前状态</button>
             <button onclick="testDirectSeries()">直接测试系列创建</button>
             <button onclick="testBasicLightweightCharts()">测试基础 LightweightCharts API</button>
+            <button onclick="testHK01810()">测试 HK.01810 股票数据</button>
+            <button onclick="testMultiStockAlignment()">测试多股票对齐</button>
+            <button onclick="test01810SpecificIssues()">测试 01810 特定问题</button>
         </div>
         
         <div id="debug-log" class="debug-info">
             调试日志将在这里显示...
+        </div>
+        
+        <div id="test-results" class="debug-info" style="background: #e8f5e8; border-color: #d4edda;">
+            <h4 style="margin: 0 0 10px 0; color: #155724;">HK.01810 测试结果</h4>
+            <div id="test-results-content">等待测试结果...</div>
         </div>
         
         <div id="main-chart" class="chart-container"></div>
@@ -82,6 +90,7 @@
         let debugLog = [];
         let mainChart = null;
         let volumeChart = null;
+        let testResults = [];
 
         // 重写 console.log 来捕获调试信息
         const originalConsoleLog = console.log;
@@ -420,6 +429,335 @@
             }
         }
 
+        // 测试 HK.01810 股票数据
+        async function testHK01810() {
+            console.log('🎯 开始测试 HK.01810 股票数据...');
+            
+            try {
+                // 清理现有图表
+                if (mainChart) {
+                    mainChart.destroy();
+                    mainChart = null;
+                }
+                if (volumeChart) {
+                    volumeChart.destroy();
+                    volumeChart = null;
+                }
+                
+                // 创建主图
+                const mainContainer = document.getElementById('main-chart');
+                mainChart = new MainChart(mainContainer);
+                mainChart.create();
+                
+                // 创建成交量图
+                const volumeContainer = document.getElementById('volume-chart');
+                volumeChart = new VolumeChart(volumeContainer);
+                volumeChart.create();
+                
+                console.log('📊 图表创建完成，开始加载 HK.01810 数据...');
+                
+                // 加载 HK.01810 股票数据
+                const response = await fetch('http://localhost:5000/api/kline?code=HK.01810');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const ohlcData = await response.json();
+                console.log(`✅ HK.01810 数据获取成功，数据长度: ${ohlcData.length}`);
+                console.log('📊 数据样本:', ohlcData.slice(0, 3));
+                
+                // 记录数据加载前的逻辑范围
+                const beforeDataLogical = mainChart.chart.timeScale().getVisibleLogicalRange();
+                console.log('🔍 [01810] 数据加载前 logical range:', beforeDataLogical);
+                
+                // 使用 MainChart 的 loadData 方法
+                await mainChart.loadData(['HK.01810'], ['supertrend', 'ma5', 'ma10']);
+                
+                // 记录数据加载后的逻辑范围
+                setTimeout(() => {
+                    const afterDataLogical = mainChart.chart.timeScale().getVisibleLogicalRange();
+                    console.log('🔍 [01810] 数据加载后 logical range:', afterDataLogical);
+                    
+                    // 检查时间轴对齐
+                    checkTimeAxisAlignment();
+                    
+                    // 记录当前状态
+                    logCurrentState();
+                }, 500);
+                
+                console.log('✅ HK.01810 股票数据测试完成');
+                updateTestResults('HK.01810 单股票测试', 'success', '单股票数据加载和时间轴检查完成');
+                
+            } catch (error) {
+                console.error('❌ HK.01810 测试失败:', error);
+                updateTestResults('HK.01810 单股票测试', 'error', `测试失败: ${error.message}`);
+            }
+        }
+        
+        // 测试多股票对齐
+        async function testMultiStockAlignment() {
+            console.log('🎯 开始测试多股票对齐...');
+            
+            try {
+                // 清理现有图表
+                if (mainChart) {
+                    mainChart.destroy();
+                    mainChart = null;
+                }
+                if (volumeChart) {
+                    volumeChart.destroy();
+                    volumeChart = null;
+                }
+                
+                // 创建主图
+                const mainContainer = document.getElementById('main-chart');
+                mainChart = new MainChart(mainContainer);
+                mainChart.create();
+                
+                // 创建成交量图
+                const volumeContainer = document.getElementById('volume-chart');
+                volumeChart = new VolumeChart(volumeContainer);
+                volumeChart.create();
+                
+                console.log('📊 图表创建完成，开始加载多股票数据...');
+                
+                // 加载多只股票数据（包括 01810）
+                const stocks = ['HK.09660', 'HK.01810', 'HK.02432'];
+                await mainChart.loadData(stocks, ['supertrend']);
+                
+                console.log('✅ 多股票数据加载完成');
+                
+                // 等待一段时间后检查对齐
+                setTimeout(() => {
+                    console.log('🔍 检查多股票时间轴对齐...');
+                    checkTimeAxisAlignment();
+                    logCurrentState();
+                    
+                    // 特别检查 01810 的可见性
+                    check01810Visibility();
+                    updateTestResults('多股票对齐测试', 'success', `加载了 ${stocks.length} 只股票并检查对齐`);
+                }, 1000);
+                
+            } catch (error) {
+                console.error('❌ 多股票对齐测试失败:', error);
+                updateTestResults('多股票对齐测试', 'error', `测试失败: ${error.message}`);
+            }
+        }
+        
+        // 测试 01810 特定问题
+        async function test01810SpecificIssues() {
+            console.log('🎯 开始测试 01810 特定问题...');
+            
+            try {
+                // 清理现有图表
+                if (mainChart) {
+                    mainChart.destroy();
+                    mainChart = null;
+                }
+                
+                // 创建主图
+                const mainContainer = document.getElementById('main-chart');
+                mainChart = new MainChart(mainContainer);
+                mainChart.create();
+                
+                console.log('📊 开始重现 01810 数据截断问题...');
+                
+                // 场景1: 三只股票一起加载
+                console.log('🧪 场景1: 加载 09660, 01810, 02432');
+                await mainChart.loadData(['HK.09660', 'HK.01810', 'HK.02432'], []);
+                
+                setTimeout(() => {
+                    console.log('🔍 场景1 检查结果:');
+                    check01810DataRange('场景1');
+                    
+                    // 场景2: 隐藏 09660
+                    console.log('🧪 场景2: 隐藏 09660');
+                    if (mainChart.toggleStockVisibility) {
+                        mainChart.toggleStockVisibility(0); // 隐藏第一只股票(09660)
+                        
+                        setTimeout(() => {
+                            console.log('🔍 场景2 检查结果:');
+                            check01810DataRange('场景2');
+                            
+                            // 场景3: 只显示 01810
+                            console.log('🧪 场景3: 只显示 01810');
+                            mainChart.toggleStockVisibility(2); // 隐藏第三只股票(02432)
+                            
+                            setTimeout(() => {
+                                console.log('🔍 场景3 检查结果:');
+                                check01810DataRange('场景3');
+                                updateTestResults('01810 特定问题测试', 'success', '完成三个场景的数据截断测试');
+                            }, 1000);
+                        }, 1000);
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                console.error('❌ 01810 特定问题测试失败:', error);
+                updateTestResults('01810 特定问题测试', 'error', `测试失败: ${error.message}`);
+            }
+        }
+        
+        // 检查时间轴对齐
+        function checkTimeAxisAlignment() {
+            if (!mainChart || !volumeChart) {
+                console.warn('⚠️ 图表未创建，无法检查对齐');
+                return;
+            }
+            
+            const mainLogical = mainChart.chart.timeScale().getVisibleLogicalRange();
+            const mainVisible = mainChart.chart.timeScale().getVisibleRange();
+            const mainBarSpacing = mainChart.chart.timeScale().options().barSpacing;
+            
+            const volumeLogical = volumeChart.chart.timeScale().getVisibleLogicalRange();
+            const volumeVisible = volumeChart.chart.timeScale().getVisibleRange();
+            const volumeBarSpacing = volumeChart.chart.timeScale().options().barSpacing;
+            
+            console.log('🔍 [ALIGNMENT] 主图状态:', {
+                logical: mainLogical,
+                visible: mainVisible,
+                barSpacing: mainBarSpacing
+            });
+            
+            console.log('🔍 [ALIGNMENT] 成交量图状态:', {
+                logical: volumeLogical,
+                visible: volumeVisible,
+                barSpacing: volumeBarSpacing
+            });
+            
+            // 检查对齐差异
+            const logicalFromDiff = Math.abs((mainLogical?.from || 0) - (volumeLogical?.from || 0));
+            const logicalToDiff = Math.abs((mainLogical?.to || 0) - (volumeLogical?.to || 0));
+            const spacingDiff = Math.abs(mainBarSpacing - volumeBarSpacing);
+            
+            if (logicalFromDiff > 0.1 || logicalToDiff > 0.1 || spacingDiff > 0.1) {
+                console.warn('⚠️ [ALIGNMENT] 发现对齐问题:', {
+                    logicalFromDiff,
+                    logicalToDiff,
+                    spacingDiff
+                });
+            } else {
+                console.log('✅ [ALIGNMENT] 时间轴对齐正常');
+            }
+        }
+        
+        // 检查 01810 可见性
+        function check01810Visibility() {
+            if (!mainChart || !mainChart.stockInfos) {
+                console.warn('⚠️ 主图或股票信息未初始化');
+                return;
+            }
+            
+            const stock01810Index = mainChart.stockInfos.findIndex(stock => stock.code === 'HK.01810');
+            if (stock01810Index === -1) {
+                console.warn('⚠️ 未找到 HK.01810 股票');
+                return;
+            }
+            
+            const stock01810Info = mainChart.stockInfos[stock01810Index];
+            const isVisible = mainChart.stockVisibility[stock01810Index] !== false;
+            
+            console.log('🔍 [01810-VIS] HK.01810 可见性状态:', {
+                index: stock01810Index,
+                code: stock01810Info.code,
+                isVisible: isVisible,
+                dataLength: stock01810Info.data?.length,
+                firstDate: stock01810Info.data?.[0]?.time,
+                lastDate: stock01810Info.data?.[stock01810Info.data.length - 1]?.time
+            });
+        }
+        
+        // 检查 01810 数据范围
+        function check01810DataRange(scenario) {
+            if (!mainChart || !mainChart.stockInfos) {
+                console.warn('⚠️ 主图或股票信息未初始化');
+                return;
+            }
+            
+            const stock01810Index = mainChart.stockInfos.findIndex(stock => stock.code === 'HK.01810');
+            if (stock01810Index === -1) {
+                console.warn('⚠️ 未找到 HK.01810 股票');
+                return;
+            }
+            
+            const stock01810Info = mainChart.stockInfos[stock01810Index];
+            const currentTimeRange = mainChart.getTimeRange();
+            
+            console.log(`🔍 [01810-RANGE-${scenario}] 当前时间范围:`, currentTimeRange);
+            console.log(`🔍 [01810-RANGE-${scenario}] 01810 数据范围:`, {
+                firstDate: stock01810Info.data?.[0]?.time,
+                lastDate: stock01810Info.data?.[stock01810Info.data.length - 1]?.time,
+                totalDataPoints: stock01810Info.data?.length
+            });
+            
+            // 检查数据是否被截断
+            if (currentTimeRange && stock01810Info.data) {
+                const rangeStart = ChartUtils.convertTimeToNumber(currentTimeRange.from);
+                const rangeEnd = ChartUtils.convertTimeToNumber(currentTimeRange.to);
+                const dataStart = ChartUtils.convertTimeToNumber(stock01810Info.data[0].time);
+                const dataEnd = ChartUtils.convertTimeToNumber(stock01810Info.data[stock01810Info.data.length - 1].time);
+                
+                const isDataTruncated = rangeStart > dataStart || rangeEnd < dataEnd;
+                console.log(`🔍 [01810-RANGE-${scenario}] 数据截断检查:`, {
+                    rangeStart: new Date(rangeStart * 1000).toISOString().split('T')[0],
+                    rangeEnd: new Date(rangeEnd * 1000).toISOString().split('T')[0],
+                    dataStart: new Date(dataStart * 1000).toISOString().split('T')[0],
+                    dataEnd: new Date(dataEnd * 1000).toISOString().split('T')[0],
+                    isDataTruncated: isDataTruncated,
+                    startTruncated: rangeStart > dataStart,
+                    endTruncated: rangeEnd < dataEnd
+                });
+                
+                if (isDataTruncated) {
+                    console.warn(`⚠️ [01810-RANGE-${scenario}] 检测到 01810 数据截断!`);
+                    updateTestResults(`${scenario} - 数据截断检查`, 'warning', 
+                        `检测到数据截断，范围: ${new Date(rangeStart * 1000).toISOString().split('T')[0]} - ${new Date(rangeEnd * 1000).toISOString().split('T')[0]}`);
+                } else {
+                    console.log(`✅ [01810-RANGE-${scenario}] 01810 数据显示完整`);
+                    updateTestResults(`${scenario} - 数据截断检查`, 'success', 
+                        `01810 数据完整显示，范围: ${new Date(dataStart * 1000).toISOString().split('T')[0]} - ${new Date(dataEnd * 1000).toISOString().split('T')[0]}`);
+                }
+            }
+        }
+
+        // 更新测试结果显示
+        function updateTestResults(testName, result, details = '') {
+            const timestamp = new Date().toLocaleTimeString();
+            const resultEntry = {
+                timestamp,
+                testName,
+                result,
+                details
+            };
+            
+            testResults.push(resultEntry);
+            
+            // 限制结果数量
+            if (testResults.length > 20) {
+                testResults = testResults.slice(-15);
+            }
+            
+            const resultsElement = document.getElementById('test-results-content');
+            if (resultsElement) {
+                const html = testResults.map(entry => {
+                    const statusIcon = entry.result === 'success' ? '✅' : 
+                                      entry.result === 'warning' ? '⚠️' : '❌';
+                    const color = entry.result === 'success' ? '#155724' : 
+                                 entry.result === 'warning' ? '#856404' : '#721c24';
+                    
+                    return `
+                        <div style="margin-bottom: 8px; color: ${color};">
+                            <strong>[${entry.timestamp}] ${statusIcon} ${entry.testName}</strong>
+                            ${entry.details ? `<br><small style="margin-left: 20px;">${entry.details}</small>` : ''}
+                        </div>
+                    `;
+                }).join('');
+                
+                resultsElement.innerHTML = html;
+                resultsElement.scrollTop = resultsElement.scrollHeight;
+            }
+        }
+
         // 页面加载完成后显示说明
         window.addEventListener('load', () => {
             console.log('🌟 LightweightCharts 逻辑范围调试工具已加载');
@@ -428,6 +766,10 @@
             console.log('2. 观察调试日志中的逻辑范围变化');
             console.log('3. 点击"记录当前状态"查看实时状态');
             console.log('4. 点击"直接测试系列创建"进行简化测试');
+            console.log('🆕 新增 HK.01810 专项测试:');
+            console.log('5. 点击"测试 HK.01810 股票数据"单独测试01810股票');
+            console.log('6. 点击"测试多股票对齐"测试多股票时间轴对齐');
+            console.log('7. 点击"测试 01810 特定问题"重现数据截断问题');
         });
     </script>
 </body>

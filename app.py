@@ -1,10 +1,12 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import pandas as pd
 import os
 import glob
 from indicator.tech_analysis_web import TechAnalysis
 
 app = Flask(__name__)
+CORS(app)  # 允许所有跨域请求
 
 DATA_DIR = 'indicator'  # 假设csv都在indicator目录
 
