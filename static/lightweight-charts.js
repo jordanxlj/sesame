@@ -777,10 +777,14 @@ class BaseChart extends EventEmitter {
                 console.warn(`时间转换失败: ${this.id}`, { original: timeRange, converted: convertedTimeRange });
                 return;
             }
-            
+
             this.chart.timeScale().setVisibleRange(convertedTimeRange);
             this.emit('timeRangeChanged', timeRange);
             console.log(`⏰ 时间范围设置成功: ${this.id}`, timeRange);
+            
+            //const vr = this.volumeChart.chart.timeScale().getVisibleRange();
+            const lr = this.chart.timeScale().getVisibleLogicalRange();
+            console.log('xxxx时间逻辑范围：', lr);
             
         } catch (error) {
             console.error(`设置时间范围失败: ${this.id}`, error);
@@ -1215,7 +1219,7 @@ class MainChart extends BaseChart {
             
             // 添加一些边距
             const timeRange = maxTime - minTime;
-            const margin = timeRange * 0.02; // 2%的边距
+            const margin = timeRange * 0.0; // 0%的边距
             const adjustedRange = {
                 from: minTime - margin,
                 to: maxTime + margin
