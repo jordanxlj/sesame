@@ -374,6 +374,31 @@ const ChartUtils = {
      */
     generateId(prefix = 'chart') {
         return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    },
+    
+    /**
+     * 处理成交量数据
+     */
+    processVolumeData(ohlcData) {
+        const volumeData = [];
+        
+        ohlcData.forEach(item => {
+            if (item && item.time) {
+                let vol = 0;
+                if (item.volume !== undefined && item.volume !== null && isFinite(item.volume)) {
+                    vol = item.volume;
+                }
+                const color = item.close >= item.open ? '#26a69a' : '#ef5350';
+                volumeData.push({
+                    time: item.time,
+                    value: vol,
+                    color: vol === 0 ? 'rgba(0,0,0,0)' : color // 隐藏0值柱子但保持时间点
+                });
+            }
+        });
+        
+        console.log(`📊 成交量数据处理完成: ${volumeData.length} 个数据点`);
+        return volumeData;
     }
 };
 
@@ -1039,6 +1064,8 @@ class MainChart extends BaseChart {
                         this.optimizePriceRange();
                     }, 150);
                 }
+                console.log('主图时间范围:', this.getTimeRange());
+                console.log('成交量子图时间范围:', this.volumeChart.getTimeRange());
             });
             
             // 监听十字线移动
@@ -1056,6 +1083,11 @@ class MainChart extends BaseChart {
      * 处理时间轴变化
      */
     handleTimeRangeChange(timeRange) {
+        const ts = this.chart.timeScale();
+        const vr = ts.getVisibleRange();
+        const lr = ts.getVisibleLogicalRange();
+        console.log('[MAIN] range', vr, 'logical', lr);
+
         // 发送时间轴变化事件
         this.emit('timeRangeChanged', {
             source: this.getSourceName(),
@@ -2383,9 +2415,15 @@ class MainChart extends BaseChart {
         }, 100);
         
         // 加载成交量数据到子图
-        setTimeout(() => {
-            this.loadVolumeDataToSubChart();
-        }, 200);
+        if (this.volumeChart) {
+            setTimeout(async () => {
+                // 获取主股票（第一只股票）的代码
+                const mainStockCode = this.stockInfos[0]?.code;
+                if (mainStockCode) {
+                    await this.loadVolumeDataToSubChart(mainStockCode);
+                }
+            }, 100);
+        }
         
         // 加载Squeeze数据到子图
         setTimeout(() => {
@@ -2494,9 +2532,9 @@ class MainChart extends BaseChart {
         });
         
         // 尝试手动测试缩放功能
-        setTimeout(() => {
-            this.testZoomFunctionality();
-        }, 1000);
+        // setTimeout(() => {
+        //     this.testZoomFunctionality();
+        // }, 1000);
     }
     
     /**
@@ -3091,23 +3129,55 @@ class MainChart extends BaseChart {
     /**
      * 加载主股票的成交量数据到子图
      */
-    async loadVolumeDataToSubChart() {
-        if (!this.volumeChart || this.stockInfos.length === 0) {
-            console.warn('⚠️ 成交量子图未创建或无股票数据');
+    async loadVolumeDataToSubChart(mainStockCode) {
+        if (!this.volumeChart) {
+            console.warn('成交量子图未创建，无法加载数据');
             return;
         }
         
         try {
-            // 获取主股票（第一只股票）的代码
-            const mainStockCode = this.stockInfos[0].code;
+            console.log(`📊 开始加载成交量数据: ${mainStockCode}`);
+            
+            // 直接使用主图的股票数据
+            const mainStock = this.stockInfos.find(s => s.code === mainStockCode);
+            if (!mainStock || !mainStock.data) {
+                console.warn(`主股票 ${mainStockCode} 无数据`);
+                return;
+            }
+            
+            // 处理成交量数据
+            const volumeData = ChartUtils.processVolumeData(mainStock.data);
             
             // 加载成交量数据
             await this.volumeChart.loadVolumeData(mainStockCode);
             
-            // 加载完成后立即同步时间范围，确保初始对齐
+            // 等待一个动画帧，确保数据渲染完成
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            
+            // 立即同步时间范围和逻辑范围
             const currentRange = this.getTimeRange();
             if (currentRange) {
+                // 获取主图的逻辑范围
+                const mainLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                
+                console.log('[VOL-SYNC] 数据加载后同步:', {
+                    visibleRange: currentRange,
+                    logicalRange: mainLogicalRange
+                });
+                
+                // 同步可见范围
                 this.volumeChart.setTimeRange(currentRange);
+                
+                // 同步逻辑范围
+                if (mainLogicalRange && this.volumeChart.chart) {
+                    this.volumeChart.chart.timeScale().setVisibleLogicalRange(mainLogicalRange);
+                }
+                
+                // 同步 barSpacing
+                const spacing = this.chart.timeScale().options().barSpacing;
+                if (spacing && !isNaN(spacing)) {
+                    this.volumeChart.chart.timeScale().applyOptions({ barSpacing: spacing });
+                }
             }
             
             console.log(`✅ 主股票 ${mainStockCode} 成交量数据已加载到子图`);
@@ -3122,16 +3192,32 @@ class MainChart extends BaseChart {
      */
     syncTimeRangeToVolumeChart(timeRange) {
         if (this.volumeChart && timeRange) {
-            // 检查成交量子图是否有数据系列，避免不必要的警告
-            if (this.volumeChart.series && this.volumeChart.series.length > 0) {
+            // 检查成交量子图是否有数据系列
+            if (this.volumeChart.volumeSeries) {
+                // 有数据，立即同步
                 this.volumeChart.setTimeRange(timeRange);
+                
+                // 同步柱宽
+                const spacing = this.chart.timeScale().options().barSpacing;
+                if (spacing && !isNaN(spacing)) {
+                    this.volumeChart.chart.timeScale().applyOptions({ barSpacing: spacing });
+                }
+                
+                // 同步逻辑范围 - 这是关键
+                const logicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                if (logicalRange) {
+                    this.volumeChart.chart.timeScale().setVisibleLogicalRange(logicalRange);
+                }
+                
+                // 调试日志
+                const vr = this.volumeChart.chart.timeScale().getVisibleRange();
+                const lr = this.volumeChart.chart.timeScale().getVisibleLogicalRange();
+                console.log('[VOL]  after sync  range', vr, 'logical', lr);
             } else {
-                // 如果成交量子图还没有数据系列，延迟同步
-                setTimeout(() => {
-                    if (this.volumeChart && this.volumeChart.series && this.volumeChart.series.length > 0) {
-                        this.volumeChart.setTimeRange(timeRange);
-                    }
-                }, 100);
+                // 暂无数据，记录待同步的范围
+                this.volumeChart._pendingTimeRange = timeRange;
+                this.volumeChart._pendingLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                console.log('[VOL]  pending sync - no data yet');
             }
         }
     }
