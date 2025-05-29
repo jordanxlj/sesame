@@ -477,6 +477,29 @@
                 console.log('📊 开始加载成交量数据到 VolumeChart...');
                 await volumeChart.loadVolumeData('HK.01810');
                 
+                // 同步成交量图与主图的时间轴
+                console.log('🔧 开始同步成交量图时间轴...');
+                const mainTimeRange = mainChart.getTimeRange();
+                const mainLogicalRange = mainChart.chart.timeScale().getVisibleLogicalRange();
+                const mainBarSpacing = mainChart.chart.timeScale().options().barSpacing;
+                
+                if (mainTimeRange) {
+                    volumeChart.setTimeRange(mainTimeRange);
+                }
+                
+                if (mainLogicalRange) {
+                    volumeChart.chart.timeScale().setVisibleLogicalRange(mainLogicalRange);
+                }
+                
+                volumeChart.chart.timeScale().applyOptions({
+                    barSpacing: mainBarSpacing,
+                    rightOffset: 12
+                });
+                
+                console.log('✅ 成交量图时间轴同步完成');
+                
+                console.log('✅ 多股票数据加载完成');
+                
                 // 记录数据加载后的逻辑范围
                 setTimeout(() => {
                     const afterDataLogical = mainChart.chart.timeScale().getVisibleLogicalRange();
@@ -533,7 +556,26 @@
                 console.log('📊 开始加载主股票成交量数据到 VolumeChart...');
                 await volumeChart.loadVolumeData(stocks[0]); // 加载第一只股票的成交量
                 
-                console.log('✅ 多股票数据加载完成');
+                // 同步成交量图与主图的时间轴
+                console.log('🔧 开始同步成交量图时间轴...');
+                const mainTimeRange = mainChart.getTimeRange();
+                const mainLogicalRange = mainChart.chart.timeScale().getVisibleLogicalRange();
+                const mainBarSpacing = mainChart.chart.timeScale().options().barSpacing;
+                
+                if (mainTimeRange) {
+                    volumeChart.setTimeRange(mainTimeRange);
+                }
+                
+                if (mainLogicalRange) {
+                    volumeChart.chart.timeScale().setVisibleLogicalRange(mainLogicalRange);
+                }
+                
+                volumeChart.chart.timeScale().applyOptions({
+                    barSpacing: mainBarSpacing,
+                    rightOffset: 12
+                });
+                
+                console.log('✅ 成交量图时间轴同步完成');
                 
                 // 等待一段时间后检查对齐
                 setTimeout(() => {
