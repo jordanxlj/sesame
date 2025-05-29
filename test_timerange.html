@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LightweightCharts 逻辑范围调试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .debug-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .chart-container {
+            height: 400px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LightweightCharts 逻辑范围调试工具</h1>
+        
+        <div class="controls">
+            <button onclick="startDebugTest()">开始调试测试</button>
+            <button onclick="clearDebugLog()">清空日志</button>
+            <button onclick="logCurrentState()">记录当前状态</button>
+            <button onclick="testDirectSeries()">直接测试系列创建</button>
+            <button onclick="testBasicLightweightCharts()">测试基础 LightweightCharts API</button>
+        </div>
+        
+        <div id="debug-log" class="debug-info">
+            调试日志将在这里显示...
+        </div>
+        
+        <div id="main-chart" class="chart-container"></div>
+        <div id="volume-chart" class="chart-container" style="height: 150px;"></div>
+    </div>
+
+    <!-- 引入 LightweightCharts 库 -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- 引入我们的图表库 -->
+    <script src="static/lightweight-charts.js"></script>
+
+    <script>
+        let debugLog = [];
+        let mainChart = null;
+        let volumeChart = null;
+
+        // 重写 console.log 来捕获调试信息
+        const originalConsoleLog = console.log;
+        const originalConsoleWarn = console.warn;
+        const originalConsoleError = console.error;
+
+        function captureLog(type, args) {
+            const timestamp = new Date().toLocaleTimeString();
+            const message = Array.from(args).map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+            ).join(' ');
+            
+            debugLog.push(`[${timestamp}] ${type}: ${message}`);
+            updateDebugDisplay();
+            
+            // 限制日志数量
+            if (debugLog.length > 100) {
+                debugLog = debugLog.slice(-80);
+            }
+        }
+
+        console.log = function(...args) {
+            captureLog('LOG', args);
+            originalConsoleLog.apply(console, args);
+        };
+
+        console.warn = function(...args) {
+            captureLog('WARN', args);
+            originalConsoleWarn.apply(console, args);
+        };
+
+        console.error = function(...args) {
+            captureLog('ERROR', args);
+            originalConsoleError.apply(console, args);
+        };
+
+        function updateDebugDisplay() {
+            const debugElement = document.getElementById('debug-log');
+            if (debugElement) {
+                debugElement.innerHTML = debugLog.slice(-20).join('\n');
+                debugElement.scrollTop = debugElement.scrollHeight;
+            }
+        }
+
+        function clearDebugLog() {
+            debugLog = [];
+            updateDebugDisplay();
+        }
+
+        function logCurrentState() {
+            if (mainChart && mainChart.chart) {
+                const logicalRange = mainChart.chart.timeScale().getVisibleLogicalRange();
+                const visibleRange = mainChart.chart.timeScale().getVisibleRange();
+                const timeScaleOptions = mainChart.chart.timeScale().options();
+                
+                console.log('🔍 [MANUAL] 当前主图状态:', {
+                    logicalRange,
+                    visibleRange,
+                    barSpacing: timeScaleOptions.barSpacing,
+                    seriesCount: mainChart.series.length
+                });
+            }
+            
+            if (volumeChart && volumeChart.chart) {
+                const volLogicalRange = volumeChart.chart.timeScale().getVisibleLogicalRange();
+                const volVisibleRange = volumeChart.chart.timeScale().getVisibleRange();
+                
+                console.log('🔍 [MANUAL] 当前成交量图状态:', {
+                    logicalRange: volLogicalRange,
+                    visibleRange: volVisibleRange,
+                    seriesCount: volumeChart.series.length
+                });
+            }
+        }
+
+        async function startDebugTest() {
+            console.log('🚀 开始调试测试...');
+            
+            try {
+                // 清理现有图表
+                if (mainChart) {
+                    mainChart.destroy();
+                    mainChart = null;
+                }
+                if (volumeChart) {
+                    volumeChart.destroy();
+                    volumeChart = null;
+                }
+                
+                // 创建主图
+                const mainContainer = document.getElementById('main-chart');
+                mainChart = new MainChart(mainContainer);
+                mainChart.create();
+                
+                // 🔍 DEBUG: 检查 LightweightCharts 实际可用的方法
+                console.log('🔍 [API-CHECK] LightweightCharts 全局对象:', window.LightweightCharts);
+                console.log('🔍 [API-CHECK] 主图chart对象方法:', Object.getOwnPropertyNames(mainChart.chart).filter(name => typeof mainChart.chart[name] === 'function'));
+                console.log('🔍 [API-CHECK] 主图chart原型方法:', Object.getOwnPropertyNames(Object.getPrototypeOf(mainChart.chart)).filter(name => typeof mainChart.chart[name] === 'function'));
+                
+                // 检查具体的系列创建方法
+                const chartMethods = [
+                    'addCandlestickSeries',
+                    'addHistogramSeries', 
+                    'addLineSeries',
+                    'addAreaSeries',
+                    'addBarSeries',
+                    // 可能的替代方法名
+                    'addCandleSeries',
+                    'addHistogram',
+                    'addLine',
+                    'addArea'
+                ];
+                
+                chartMethods.forEach(method => {
+                    console.log(`🔍 [API-CHECK] ${method}:`, typeof mainChart.chart[method]);
+                });
+                
+                // 创建成交量图
+                const volumeContainer = document.getElementById('volume-chart');
+                volumeChart = new VolumeChart(volumeContainer);
+                volumeChart.create();
+                
+                console.log('✅ 图表创建完成');
+                
+                // 模拟加载数据
+                await simulateDataLoad();
+                
+            } catch (error) {
+                console.error('❌ 调试测试失败:', error);
+            }
+        }
+
+        async function simulateDataLoad() {
+            console.log('📊 开始模拟数据加载...');
+            
+            // 模拟OHLC数据
+            const mockOhlcData = generateMockOhlcData();
+            console.log('🔍 生成模拟数据:', mockOhlcData.length, '个数据点');
+            
+            // 步骤1: 添加K线系列
+            console.log('📈 步骤1: 添加K线系列');
+            const candleSeries = mainChart.addSeries('candlestick', {
+                priceScaleId: 'right',
+                upColor: '#26a69a',
+                downColor: '#ef5350',
+                borderUpColor: '#26a69a',
+                borderDownColor: '#ef5350',
+                wickUpColor: '#26a69a',
+                wickDownColor: '#ef5350'
+            });
+            
+            if (candleSeries) {
+                console.log('🔍 K线系列创建后，设置数据...');
+                candleSeries.setData(mockOhlcData);
+                console.log('✅ K线数据设置完成');
+            }
+            
+            // 等待一个动画帧
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            
+            // 步骤2: 添加成交量系列
+            console.log('📊 步骤2: 添加成交量系列');
+            const volumeData = mockOhlcData.map(item => ({
+                time: item.time,
+                value: Math.random() * 1000000,
+                color: item.close >= item.open ? '#26a69a' : '#ef5350'
+            }));
+            
+            const volumeSeries = volumeChart.addSeries('histogram', {
+                priceScaleId: 'right',
+                priceFormat: { type: 'volume' },
+                color: '#26a69a'
+            });
+            
+            if (volumeSeries) {
+                console.log('🔍 成交量系列创建后，设置数据...');
+                volumeSeries.setData(volumeData);
+                console.log('✅ 成交量数据设置完成');
+            }
+            
+            // 等待一个动画帧
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            
+            console.log('✅ 模拟数据加载完成');
+            logCurrentState();
+        }
+
+        function generateMockOhlcData() {
+            const data = [];
+            const startDate = new Date('2024-01-01');
+            let price = 100;
+            
+            for (let i = 0; i < 100; i++) {
+                const date = new Date(startDate);
+                date.setDate(date.getDate() + i);
+                
+                const open = price;
+                const change = (Math.random() - 0.5) * 4;
+                const close = open + change;
+                const high = Math.max(open, close) + Math.random() * 2;
+                const low = Math.min(open, close) - Math.random() * 2;
+                
+                data.push({
+                    time: date.toISOString().split('T')[0],
+                    open: parseFloat(open.toFixed(2)),
+                    high: parseFloat(high.toFixed(2)),
+                    low: parseFloat(low.toFixed(2)),
+                    close: parseFloat(close.toFixed(2)),
+                    volume: Math.floor(Math.random() * 1000000)
+                });
+                
+                price = close;
+            }
+            
+            return data;
+        }
+
+        async function testDirectSeries() {
+            console.log('🧪 直接测试系列创建和数据设置...');
+            
+            if (!mainChart) {
+                console.error('❌ 主图未创建');
+                return;
+            }
+            
+            try {
+                // 记录初始状态
+                const beforeLogical = mainChart.chart.timeScale().getVisibleLogicalRange();
+                console.log('🔍 [DIRECT] 测试前 logical range:', beforeLogical);
+                
+                // 创建一个简单的线条系列
+                const lineSeries = mainChart.addSeries('line', {
+                    color: '#ff0000',
+                    lineWidth: 2
+                });
+                
+                // 记录创建后状态
+                const afterCreateLogical = mainChart.chart.timeScale().getVisibleLogicalRange();
+                console.log('🔍 [DIRECT] 系列创建后 logical range:', afterCreateLogical);
+                
+                // 设置简单数据
+                const simpleData = [
+                    { time: '2024-01-01', value: 100 },
+                    { time: '2024-01-02', value: 110 },
+                    { time: '2024-01-03', value: 105 },
+                    { time: '2024-01-04', value: 115 },
+                    { time: '2024-01-05', value: 120 }
+                ];
+                
+                lineSeries.setData(simpleData);
+                
+                // 记录数据设置后状态
+                setTimeout(() => {
+                    const afterDataLogical = mainChart.chart.timeScale().getVisibleLogicalRange();
+                    console.log('🔍 [DIRECT] 数据设置后 logical range:', afterDataLogical);
+                    
+                    // 分析变化
+                    if (beforeLogical && afterDataLogical) {
+                        const fromDiff = Math.abs((beforeLogical.from || 0) - (afterDataLogical.from || 0));
+                        const toDiff = Math.abs((beforeLogical.to || 0) - (afterDataLogical.to || 0));
+                        
+                        console.log('🔍 [DIRECT] 逻辑范围变化分析:', {
+                            fromDiff,
+                            toDiff,
+                            beforeFrom: beforeLogical.from,
+                            afterFrom: afterDataLogical.from,
+                            isNegative: afterDataLogical.from < 0
+                        });
+                    }
+                }, 50);
+                
+            } catch (error) {
+                console.error('❌ 直接测试失败:', error);
+            }
+        }
+
+        function testBasicLightweightCharts() {
+            console.log('🧪 测试基础 LightweightCharts API...');
+            
+            try {
+                // 检查全局对象
+                console.log('🔍 window.LightweightCharts:', window.LightweightCharts);
+                console.log('🔍 typeof LightweightCharts:', typeof window.LightweightCharts);
+                
+                if (window.LightweightCharts) {
+                    console.log('🔍 LightweightCharts 方法:', Object.keys(window.LightweightCharts));
+                    
+                    // 尝试创建一个简单的图表
+                    const container = document.createElement('div');
+                    container.style.width = '400px';
+                    container.style.height = '300px';
+                    document.body.appendChild(container);
+                    
+                    const chart = LightweightCharts.createChart(container, {
+                        width: 400,
+                        height: 300
+                    });
+                    
+                    console.log('✅ 基础图表创建成功');
+                    console.log('🔍 chart 对象:', chart);
+                    console.log('🔍 chart 方法:', Object.getOwnPropertyNames(chart).filter(name => typeof chart[name] === 'function'));
+                    console.log('🔍 chart 原型方法:', Object.getOwnPropertyNames(Object.getPrototypeOf(chart)).filter(name => typeof chart[name] === 'function'));
+                    
+                    // 测试系列创建方法
+                    const testMethods = [
+                        'addCandlestickSeries',
+                        'addHistogramSeries',
+                        'addLineSeries',
+                        'addAreaSeries'
+                    ];
+                    
+                    testMethods.forEach(method => {
+                        if (typeof chart[method] === 'function') {
+                            console.log(`✅ ${method}: 可用`);
+                            try {
+                                const series = chart[method]();
+                                console.log(`✅ ${method} 创建成功:`, series);
+                            } catch (e) {
+                                console.log(`⚠️ ${method} 创建失败:`, e.message);
+                            }
+                        } else {
+                            console.log(`❌ ${method}: 不可用`);
+                        }
+                    });
+                    
+                    // 清理
+                    chart.remove();
+                    document.body.removeChild(container);
+                    
+                } else {
+                    console.error('❌ LightweightCharts 未加载');
+                }
+                
+            } catch (error) {
+                console.error('❌ 基础测试失败:', error);
+            }
+        }
+
+        // 页面加载完成后显示说明
+        window.addEventListener('load', () => {
+            console.log('🌟 LightweightCharts 逻辑范围调试工具已加载');
+            console.log('📖 使用说明:');
+            console.log('1. 点击"开始调试测试"创建图表并加载数据');
+            console.log('2. 观察调试日志中的逻辑范围变化');
+            console.log('3. 点击"记录当前状态"查看实时状态');
+            console.log('4. 点击"直接测试系列创建"进行简化测试');
+        });
+    </script>
+</body>
+</html> 

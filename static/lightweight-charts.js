@@ -227,7 +227,11 @@ const ChartConfig = {
         borderColor: '#e0e0e0',
         rightBarStaysOnScroll: true,
         // 防止自动调整导致偏移
-        allowShiftVisibleRangeOnWhitespaceReplacement: false
+        allowShiftVisibleRangeOnWhitespaceReplacement: false,
+        // 新增：防止负数逻辑范围的保护设置
+        minimumHeight: 1,       // 最小高度
+        allowShiftVisibleRangeOnNewBar: false, // 禁用新数据柱的自动范围移动
+        shiftVisibleRangeOnNewBar: false      // 显式禁用范围移动
     },
     
     // 验证配置完整性
@@ -674,6 +678,10 @@ class BaseChart extends EventEmitter {
             return null;
         }
         
+        // 🔍 DEBUG: 记录添加系列前的逻辑范围
+        const beforeLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+        console.log(`🔍 [${this.id}] 添加系列前 logical range:`, beforeLogicalRange);
+        
         console.log(`🔧 添加系列: ${this.id}, 类型: ${type}`, options);
         console.log(`🔍 图表实例检查:`, {
             chartExists: !!this.chart,
@@ -706,13 +714,47 @@ class BaseChart extends EventEmitter {
                     return null;
             }
             
+            // 🔍 DEBUG: 记录添加系列后的逻辑范围
+            const afterLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+            console.log(`🔍 [${this.id}] 添加系列后 logical range:`, afterLogicalRange);
+            
+            // 🔍 DEBUG: 如果逻辑范围发生了变化，记录详细信息
+            if (beforeLogicalRange && afterLogicalRange) {
+                const fromDiff = Math.abs((beforeLogicalRange.from || 0) - (afterLogicalRange.from || 0));
+                const toDiff = Math.abs((beforeLogicalRange.to || 0) - (afterLogicalRange.to || 0));
+                if (fromDiff > 0.01 || toDiff > 0.01) {
+                    console.warn(`⚠️ [${this.id}] 添加${type}系列导致逻辑范围变化:`, {
+                        before: beforeLogicalRange,
+                        after: afterLogicalRange,
+                        fromDiff,
+                        toDiff
+                    });
+                }
+            }
+            
             this.series.push(series);
             
             // 为主要系列添加数据设置监听
             if (series && series.setData && ['candlestick', 'histogram'].includes(type.toLowerCase())) {
                 const originalSetData = series.setData.bind(series);
                 series.setData = (data) => {
+                    // 🔍 DEBUG: 记录数据设置前的逻辑范围
+                    const beforeDataLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                    console.log(`🔍 [${this.id}] 设置${type}数据前 logical range:`, beforeDataLogicalRange);
+                    console.log(`🔍 [${this.id}] 设置${type}数据:`, { dataLength: data?.length, sampleData: data?.slice(0, 2) });
+                    
                     originalSetData(data);
+                    
+                    // 🔍 DEBUG: 记录数据设置后的逻辑范围
+                    setTimeout(() => {
+                        const afterDataLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                        console.log(`🔍 [${this.id}] 设置${type}数据后 logical range:`, afterDataLogicalRange);
+                        
+                        // 检查并修复负数逻辑范围
+                        this.checkAndFixNegativeLogicalRange(beforeDataLogicalRange, afterDataLogicalRange, type);
+                        
+                    }, 10);
+                    
                     this.setState({ isDataLoaded: true });
                     this.emit('dataLoaded', data);
                 };
@@ -963,6 +1005,93 @@ class BaseChart extends EventEmitter {
             console.error(`❌ 禁用${this.getSourceName()}子图独立交互失败:`, error);
         }
     }
+    
+    /**
+     * 检查并修复负数逻辑范围
+     */
+    checkAndFixNegativeLogicalRange(beforeRange, afterRange, seriesType) {
+        if (!afterRange || !this.chart) return;
+        
+        // 检查是否出现负数逻辑范围
+        if (afterRange.from < -0.01) {
+            console.warn(`⚠️ [${this.id}] 检测到负数逻辑范围 (${seriesType}):`, {
+                before: beforeRange,
+                after: afterRange,
+                fromValue: afterRange.from
+            });
+            
+            try {
+                // 方法1: 尝试使用fitContent重置逻辑范围
+                console.log(`🔧 [${this.id}] 尝试使用fitContent修复负数逻辑范围...`);
+                this.chart.timeScale().fitContent();
+                
+                // 检查修复后的结果
+                setTimeout(() => {
+                    const fixedRange = this.chart.timeScale().getVisibleLogicalRange();
+                    console.log(`🔍 [${this.id}] fitContent后的逻辑范围:`, fixedRange);
+                    
+                    if (fixedRange && fixedRange.from < -0.01) {
+                        // 如果fitContent无效，尝试手动设置合理的逻辑范围
+                        console.log(`🔧 [${this.id}] fitContent无效，尝试手动设置逻辑范围...`);
+                        this.manuallyFixLogicalRange(afterRange);
+                    } else {
+                        console.log(`✅ [${this.id}] 负数逻辑范围已通过fitContent修复`);
+                    }
+                }, 20);
+                
+            } catch (error) {
+                console.error(`❌ [${this.id}] 修复负数逻辑范围失败:`, error);
+            }
+        } else {
+            // 检查数据设置是否导致逻辑范围变化（正常情况）
+            if (beforeRange && afterRange) {
+                const fromDiff = Math.abs((beforeRange.from || 0) - (afterRange.from || 0));
+                const toDiff = Math.abs((beforeRange.to || 0) - (afterRange.to || 0));
+                if (fromDiff > 0.01 || toDiff > 0.01) {
+                    console.log(`📊 [${this.id}] 设置${seriesType}数据导致逻辑范围正常变化:`, {
+                        before: beforeRange,
+                        after: afterRange,
+                        fromDiff,
+                        toDiff
+                    });
+                }
+            }
+        }
+    }
+    
+    /**
+     * 手动修复逻辑范围
+     */
+    manuallyFixLogicalRange(problematicRange) {
+        if (!this.chart) return;
+        
+        try {
+            // 计算合理的逻辑范围
+            const rangeWidth = problematicRange.to - problematicRange.from;
+            const fixedRange = {
+                from: 0, // 将起始点设为0，避免负数
+                to: Math.max(rangeWidth, 50) // 确保有足够的范围宽度
+            };
+            
+            console.log(`🔧 [${this.id}] 设置修复的逻辑范围:`, fixedRange);
+            this.chart.timeScale().setVisibleLogicalRange(fixedRange);
+            
+            // 验证修复结果
+            setTimeout(() => {
+                const finalRange = this.chart.timeScale().getVisibleLogicalRange();
+                console.log(`🔍 [${this.id}] 手动修复后的逻辑范围:`, finalRange);
+                
+                if (finalRange && finalRange.from >= 0) {
+                    console.log(`✅ [${this.id}] 负数逻辑范围已手动修复`);
+                } else {
+                    console.warn(`⚠️ [${this.id}] 手动修复逻辑范围仍有问题`);
+                }
+            }, 10);
+            
+        } catch (error) {
+            console.error(`❌ [${this.id}] 手动修复逻辑范围失败:`, error);
+        }
+    }
 }
 
 // ================================
@@ -1069,7 +1198,37 @@ class MainChart extends BaseChart {
                     }, 150);
                 }
                 console.log('主图时间范围:', this.getTimeRange());
-                console.log('成交量子图时间范围:', this.volumeChart.getTimeRange());
+                console.log('成交量子图时间范围:', this.volumeChart ? this.volumeChart.getTimeRange() : 'N/A (volume chart not created)');
+            });
+            
+            // 🔍 DEBUG: 添加逻辑范围变化监听器
+            this.chart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+                if (logicalRange) {
+                    console.log(`🔍 [MAIN-LOGICAL-CHANGE] 逻辑范围变化: {from: ${logicalRange.from}, to: ${logicalRange.to}}`);
+                    
+                    // 记录调用栈以了解变化来源
+                    const stack = new Error().stack;
+                    const relevantStack = stack.split('\n').slice(1, 6).join('\n');
+                    console.log(`🔍 [MAIN-LOGICAL-STACK] 调用栈:`, relevantStack);
+                    
+                    // 如果逻辑范围的from值意外变为负数，立即修复
+                    if (logicalRange.from < -0.01) {
+                        console.warn(`⚠️ [MAIN-LOGICAL-NEGATIVE] 检测到负数逻辑范围偏移: ${logicalRange.from}`);
+                        console.warn(`⚠️ [MAIN-LOGICAL-NEGATIVE] 完整调用栈:`, stack);
+                        
+                        // 记录当前图表状态
+                        const currentState = {
+                            seriesCount: this.series.length,
+                            isDataLoaded: this.getState().isDataLoaded,
+                            hasVolumeChart: !!this.volumeChart,
+                            volumeSeriesExists: !!this.volumeChart?.volumeSeries
+                        };
+                        console.warn(`⚠️ [MAIN-LOGICAL-NEGATIVE] 图表状态:`, currentState);
+                        
+                        // 立即修复负数逻辑范围
+                        this.fixNegativeLogicalRangeImmediate(logicalRange);
+                    }
+                }
             });
             
             // 监听十字线移动
@@ -1105,8 +1264,10 @@ class MainChart extends BaseChart {
         // 同步时间轴到Squeeze子图
         this.syncTimeRangeToSqueezeChart(timeRange);
         
-        // 同步 barSpacing 到子图，保证柱宽一致
-        this.syncBarSpacingToSubCharts();
+        // 强制所有图表时间轴对齐（延迟执行以确保同步完成）
+        setTimeout(() => {
+            this.forceTimeAxisAlignment();
+        }, 100);
     }
     
     /**
@@ -1192,6 +1353,10 @@ class MainChart extends BaseChart {
         if (!this.chart) return;
         
         try {
+            // 🔍 DEBUG: 记录调整前的逻辑范围
+            const beforeAdjustLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+            console.log(`🔍 [ADJUST-TIME] 调整前 logical range:`, beforeAdjustLogicalRange);
+            
             // 获取所有可见股票的数据范围
             let minTime = Infinity;
             let maxTime = -Infinity;
@@ -1225,8 +1390,45 @@ class MainChart extends BaseChart {
                 to: maxTime + margin
             };
             
+            console.log(`🔍 [ADJUST-TIME] 准备设置时间范围:`, {
+                from: new Date(adjustedRange.from * 1000).toISOString().split('T')[0],
+                to: new Date(adjustedRange.to * 1000).toISOString().split('T')[0],
+                fromTimestamp: adjustedRange.from,
+                toTimestamp: adjustedRange.to
+            });
+            
             // 设置时间范围
             this.chart.timeScale().setVisibleRange(adjustedRange);
+            
+            // 🔍 DEBUG: 记录调整后的逻辑范围
+            setTimeout(() => {
+                const afterAdjustLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                console.log(`🔍 [ADJUST-TIME] 调整后 logical range:`, afterAdjustLogicalRange);
+                
+                // 检查逻辑范围是否发生了意外变化
+                if (beforeAdjustLogicalRange && afterAdjustLogicalRange) {
+                    const fromDiff = Math.abs((beforeAdjustLogicalRange.from || 0) - (afterAdjustLogicalRange.from || 0));
+                    const toDiff = Math.abs((beforeAdjustLogicalRange.to || 0) - (afterAdjustLogicalRange.to || 0));
+                    
+                    if (fromDiff > 0.01 || toDiff > 0.01) {
+                        console.warn(`⚠️ [ADJUST-TIME] setVisibleRange 导致逻辑范围变化:`, {
+                            before: beforeAdjustLogicalRange,
+                            after: afterAdjustLogicalRange,
+                            fromDiff,
+                            toDiff
+                        });
+                        
+                        // 如果from值变为负数，这是关键问题
+                        if (afterAdjustLogicalRange.from < -0.01) {
+                            console.error(`❌ [ADJUST-TIME] setVisibleRange 导致逻辑范围from值变为负数: ${afterAdjustLogicalRange.from}`);
+                            
+                            // 记录调用栈
+                            const stack = new Error().stack;
+                            console.error(`❌ [ADJUST-TIME] 调用栈:`, stack);
+                        }
+                    }
+                }
+            }, 10);
             
             console.log(`⏰ 时间轴已调整到可见股票范围: ${new Date(adjustedRange.from * 1000).toISOString().split('T')[0]} - ${new Date(adjustedRange.to * 1000).toISOString().split('T')[0]}`);
             
@@ -2378,6 +2580,10 @@ class MainChart extends BaseChart {
     finalizeDataLoad() {
         this.setState({ isLoading: false, isDataLoaded: true });
         
+        // 🔍 DEBUG: 记录数据加载完成时的逻辑范围
+        const initialLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+        console.log(`🔍 [FINALIZE] 数据加载完成时 logical range:`, initialLogicalRange);
+        
         // 智能检查是否需要归一化
         const shouldNormalize = this.shouldEnableNormalization();
         if (!shouldNormalize && this.normalizationEnabled) {
@@ -2391,11 +2597,29 @@ class MainChart extends BaseChart {
         if (this.chart && !this._hasInitialFit) {
             try {
                 // 首先使用默认的fitContent
+                console.log(`🔍 [FINALIZE] 执行 fitContent 前 logical range:`, this.chart.timeScale().getVisibleLogicalRange());
                 this.chart.timeScale().fitContent();
+                
+                // 🔍 DEBUG: 记录 fitContent 后的逻辑范围
+                setTimeout(() => {
+                    const afterFitLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                    console.log(`🔍 [FINALIZE] fitContent 后 logical range:`, afterFitLogicalRange);
+                    
+                    if (afterFitLogicalRange && afterFitLogicalRange.from < -0.01) {
+                        console.warn(`⚠️ [FINALIZE] fitContent 后逻辑范围变为负数: ${afterFitLogicalRange.from}`);
+                    }
+                }, 10);
                 
                 // 然后调整到可见股票的范围
                 setTimeout(() => {
+                    console.log(`🔍 [FINALIZE] 执行 adjustTimeRangeToVisibleStocks 前 logical range:`, this.chart.timeScale().getVisibleLogicalRange());
                     this.adjustTimeRangeToVisibleStocks();
+                    
+                    // 记录调整后的逻辑范围
+                    setTimeout(() => {
+                        const afterAdjustLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                        console.log(`🔍 [FINALIZE] adjustTimeRangeToVisibleStocks 后 logical range:`, afterAdjustLogicalRange);
+                    }, 10);
                 }, 100);
                 
                 this._hasInitialFit = true;
@@ -2421,10 +2645,31 @@ class MainChart extends BaseChart {
         // 加载成交量数据到子图
         if (this.volumeChart) {
             setTimeout(async () => {
+                // 🔍 DEBUG: 记录成交量加载前的主图状态
+                const beforeVolumeLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                console.log(`🔍 [FINALIZE] 加载成交量前主图 logical range:`, beforeVolumeLogicalRange);
+                
                 // 获取主股票（第一只股票）的代码
                 const mainStockCode = this.stockInfos[0]?.code;
                 if (mainStockCode) {
                     await this.loadVolumeDataToSubChart(mainStockCode);
+                    
+                    // 🔍 DEBUG: 记录成交量加载后的主图状态
+                    setTimeout(() => {
+                        const afterVolumeLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                        console.log(`🔍 [FINALIZE] 成交量加载后主图 logical range:`, afterVolumeLogicalRange);
+                        
+                        if (beforeVolumeLogicalRange && afterVolumeLogicalRange) {
+                            const fromDiff = Math.abs((beforeVolumeLogicalRange.from || 0) - (afterVolumeLogicalRange.from || 0));
+                            if (fromDiff > 0.01) {
+                                console.warn(`⚠️ [FINALIZE] 成交量加载导致主图逻辑范围变化:`, {
+                                    before: beforeVolumeLogicalRange,
+                                    after: afterVolumeLogicalRange,
+                                    fromDiff
+                                });
+                            }
+                        }
+                    }, 50);
                 }
             }, 100);
         }
@@ -3184,6 +3429,40 @@ class MainChart extends BaseChart {
                 }
             }
             
+            // 检查是否有待同步的配置
+            if (this.volumeChart._pendingTimeRange || this.volumeChart._pendingLogicalRange || this.volumeChart._pendingTimeScaleOptions) {
+                console.log('[VOL-SYNC] 应用待同步的配置...');
+                
+                // 应用待同步的时间轴配置
+                if (this.volumeChart._pendingTimeScaleOptions) {
+                    const pendingOptions = this.volumeChart._pendingTimeScaleOptions;
+                    this.volumeChart.chart.timeScale().applyOptions({
+                        barSpacing: pendingOptions.barSpacing,
+                        rightOffset: pendingOptions.rightOffset,
+                        fixLeftEdge: pendingOptions.fixLeftEdge,
+                        fixRightEdge: pendingOptions.fixRightEdge,
+                        lockVisibleTimeRangeOnResize: pendingOptions.lockVisibleTimeRangeOnResize
+                    });
+                }
+                
+                // 应用待同步的时间范围
+                if (this.volumeChart._pendingTimeRange) {
+                    this.volumeChart.setTimeRange(this.volumeChart._pendingTimeRange);
+                }
+                
+                // 应用待同步的逻辑范围
+                if (this.volumeChart._pendingLogicalRange) {
+                    this.volumeChart.chart.timeScale().setVisibleLogicalRange(this.volumeChart._pendingLogicalRange);
+                }
+                
+                // 清除待同步标记
+                delete this.volumeChart._pendingTimeRange;
+                delete this.volumeChart._pendingLogicalRange;
+                delete this.volumeChart._pendingTimeScaleOptions;
+                
+                console.log('[VOL-SYNC] ✅ 待同步配置已应用');
+            }
+            
             console.log(`✅ 主股票 ${mainStockCode} 成交量数据已加载到子图`);
             
         } catch (error) {
@@ -3198,29 +3477,67 @@ class MainChart extends BaseChart {
         if (this.volumeChart && timeRange) {
             // 检查成交量子图是否有数据系列
             if (this.volumeChart.volumeSeries) {
-                // 有数据，立即同步
+                // 获取主图的完整时间轴配置
+                const mainTimeScaleOptions = this.chart.timeScale().options();
+                const mainLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                
+                console.log('[VOL-SYNC] 主图时间轴配置:', {
+                    barSpacing: mainTimeScaleOptions.barSpacing,
+                    rightOffset: mainTimeScaleOptions.rightOffset,
+                    logicalRange: mainLogicalRange
+                });
+                
+                // 完全同步时间轴配置
+                this.volumeChart.chart.timeScale().applyOptions({
+                    barSpacing: mainTimeScaleOptions.barSpacing,
+                    rightOffset: mainTimeScaleOptions.rightOffset,
+                    fixLeftEdge: mainTimeScaleOptions.fixLeftEdge,
+                    fixRightEdge: mainTimeScaleOptions.fixRightEdge,
+                    lockVisibleTimeRangeOnResize: mainTimeScaleOptions.lockVisibleTimeRangeOnResize
+                });
+                
+                // 同步可见时间范围
                 this.volumeChart.setTimeRange(timeRange);
                 
-                // 同步柱宽
-                const spacing = this.chart.timeScale().options().barSpacing;
-                if (spacing && !isNaN(spacing)) {
-                    this.volumeChart.chart.timeScale().applyOptions({ barSpacing: spacing });
+                // 立即同步逻辑范围 - 这是关键步骤
+                if (mainLogicalRange) {
+                    console.log('[VOL-SYNC] 同步逻辑范围:', mainLogicalRange);
+                    this.volumeChart.chart.timeScale().setVisibleLogicalRange(mainLogicalRange);
                 }
                 
-                // 同步逻辑范围 - 这是关键
-                const logicalRange = this.chart.timeScale().getVisibleLogicalRange();
-                if (logicalRange) {
-                    this.volumeChart.chart.timeScale().setVisibleLogicalRange(logicalRange);
-                }
+                // 验证同步结果
+                setTimeout(() => {
+                    const volumeLogicalRange = this.volumeChart.chart.timeScale().getVisibleLogicalRange();
+                    const volumeTimeScaleOptions = this.volumeChart.chart.timeScale().options();
+                    
+                    console.log('[VOL-SYNC] 同步后成交量图配置:', {
+                        barSpacing: volumeTimeScaleOptions.barSpacing,
+                        rightOffset: volumeTimeScaleOptions.rightOffset,
+                        logicalRange: volumeLogicalRange
+                    });
+                    
+                    // 检查同步是否成功
+                    const spacingDiff = Math.abs(mainTimeScaleOptions.barSpacing - volumeTimeScaleOptions.barSpacing);
+                    const logicalFromDiff = Math.abs((mainLogicalRange?.from || 0) - (volumeLogicalRange?.from || 0));
+                    const logicalToDiff = Math.abs((mainLogicalRange?.to || 0) - (volumeLogicalRange?.to || 0));
+                    
+                    if (spacingDiff > 0.01 || logicalFromDiff > 0.01 || logicalToDiff > 0.01) {
+                        console.warn('[VOL-SYNC] 同步不完全，尝试重新同步...', {
+                            spacingDiff, logicalFromDiff, logicalToDiff
+                        });
+                        
+                        // 重新强制同步
+                        this.forceTimeAxisAlignment();
+                    } else {
+                        console.log('[VOL-SYNC] ✅ 时间轴同步成功');
+                    }
+                }, 50);
                 
-                // 调试日志
-                const vr = this.volumeChart.chart.timeScale().getVisibleRange();
-                const lr = this.volumeChart.chart.timeScale().getVisibleLogicalRange();
-                console.log('[VOL]  after sync  range', vr, 'logical', lr);
             } else {
                 // 暂无数据，记录待同步的范围
                 this.volumeChart._pendingTimeRange = timeRange;
                 this.volumeChart._pendingLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                this.volumeChart._pendingTimeScaleOptions = this.chart.timeScale().options();
                 console.log('[VOL]  pending sync - no data yet');
             }
         }
@@ -3396,6 +3713,207 @@ class MainChart extends BaseChart {
             console.warn('同步子图 barSpacing 失败:', error);
         }
     }
+    
+    /**
+     * 立即修复负数逻辑范围（主图专用）
+     */
+    fixNegativeLogicalRangeImmediate(problematicRange) {
+        if (!this.chart) return;
+        
+        console.log(`🚨 [MAIN-FIX] 开始立即修复负数逻辑范围...`);
+        
+        try {
+            // 防止递归调用
+            if (this._isFixingLogicalRange) {
+                console.log(`🔄 [MAIN-FIX] 正在修复中，跳过重复调用`);
+                return;
+            }
+            this._isFixingLogicalRange = true;
+            
+            // 方法1: 首先尝试fitContent
+            console.log(`🔧 [MAIN-FIX] 尝试fitContent修复...`);
+            this.chart.timeScale().fitContent();
+            
+            setTimeout(() => {
+                const afterFitRange = this.chart.timeScale().getVisibleLogicalRange();
+                console.log(`🔍 [MAIN-FIX] fitContent后逻辑范围:`, afterFitRange);
+                
+                if (afterFitRange && afterFitRange.from < -0.01) {
+                    // fitContent无效，使用手动修复
+                    console.log(`🔧 [MAIN-FIX] fitContent无效，使用手动修复...`);
+                    
+                    const rangeWidth = problematicRange.to - problematicRange.from;
+                    const safeRange = {
+                        from: 0,
+                        to: Math.max(rangeWidth + problematicRange.from, 50) // 保持总宽度，但起点从0开始
+                    };
+                    
+                    console.log(`🔧 [MAIN-FIX] 设置安全逻辑范围:`, safeRange);
+                    this.chart.timeScale().setVisibleLogicalRange(safeRange);
+                    
+                    // 验证最终结果
+                    setTimeout(() => {
+                        const finalRange = this.chart.timeScale().getVisibleLogicalRange();
+                        console.log(`🔍 [MAIN-FIX] 最终逻辑范围:`, finalRange);
+                        
+                        if (finalRange && finalRange.from >= 0) {
+                            console.log(`✅ [MAIN-FIX] 负数逻辑范围修复成功`);
+                        } else {
+                            console.error(`❌ [MAIN-FIX] 负数逻辑范围修复失败，需要进一步调试`);
+                        }
+                        
+                        this._isFixingLogicalRange = false;
+                    }, 10);
+                } else {
+                    console.log(`✅ [MAIN-FIX] fitContent修复成功`);
+                    this._isFixingLogicalRange = false;
+                }
+            }, 20);
+            
+        } catch (error) {
+            console.error(`❌ [MAIN-FIX] 立即修复逻辑范围失败:`, error);
+            this._isFixingLogicalRange = false;
+        }
+    }
+    
+    /**
+     * 强制时间轴对齐（主图和所有子图）
+     */
+    forceTimeAxisAlignment() {
+        if (!this.chart) return;
+        
+        console.log('🔧 [FORCE-ALIGN] 开始强制时间轴对齐...');
+        
+        try {
+            // 获取主图的参考配置
+            const mainTimeScaleOptions = this.chart.timeScale().options();
+            const mainLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+            const mainVisibleRange = this.chart.timeScale().getVisibleRange();
+            
+            console.log('🔧 [FORCE-ALIGN] 主图参考配置:', {
+                barSpacing: mainTimeScaleOptions.barSpacing,
+                rightOffset: mainTimeScaleOptions.rightOffset,
+                logicalRange: mainLogicalRange,
+                visibleRange: mainVisibleRange
+            });
+            
+            // 强制对齐成交量图
+            if (this.volumeChart && this.volumeChart.chart) {
+                console.log('🔧 [FORCE-ALIGN] 对齐成交量图...');
+                
+                // 先应用完整的时间轴配置
+                this.volumeChart.chart.timeScale().applyOptions({
+                    barSpacing: mainTimeScaleOptions.barSpacing,
+                    rightOffset: mainTimeScaleOptions.rightOffset,
+                    fixLeftEdge: mainTimeScaleOptions.fixLeftEdge,
+                    fixRightEdge: mainTimeScaleOptions.fixRightEdge,
+                    lockVisibleTimeRangeOnResize: mainTimeScaleOptions.lockVisibleTimeRangeOnResize,
+                    shiftVisibleRangeOnNewBar: mainTimeScaleOptions.shiftVisibleRangeOnNewBar,
+                    allowShiftVisibleRangeOnWhitespaceReplacement: mainTimeScaleOptions.allowShiftVisibleRangeOnWhitespaceReplacement
+                });
+                
+                // 强制设置相同的可见范围
+                if (mainVisibleRange) {
+                    this.volumeChart.chart.timeScale().setVisibleRange(mainVisibleRange);
+                }
+                
+                // 强制设置相同的逻辑范围
+                if (mainLogicalRange) {
+                    this.volumeChart.chart.timeScale().setVisibleLogicalRange(mainLogicalRange);
+                }
+                
+                console.log('✅ [FORCE-ALIGN] 成交量图对齐完成');
+            }
+            
+            // 强制对齐其他子图
+            if (this.squeezeChart && this.squeezeChart.chart) {
+                console.log('🔧 [FORCE-ALIGN] 对齐Squeeze图...');
+                
+                this.squeezeChart.chart.timeScale().applyOptions({
+                    barSpacing: mainTimeScaleOptions.barSpacing,
+                    rightOffset: mainTimeScaleOptions.rightOffset,
+                    fixLeftEdge: mainTimeScaleOptions.fixLeftEdge,
+                    fixRightEdge: mainTimeScaleOptions.fixRightEdge,
+                    lockVisibleTimeRangeOnResize: mainTimeScaleOptions.lockVisibleTimeRangeOnResize
+                });
+                
+                if (mainVisibleRange) {
+                    this.squeezeChart.chart.timeScale().setVisibleRange(mainVisibleRange);
+                }
+                
+                if (mainLogicalRange) {
+                    this.squeezeChart.chart.timeScale().setVisibleLogicalRange(mainLogicalRange);
+                }
+                
+                console.log('✅ [FORCE-ALIGN] Squeeze图对齐完成');
+            }
+            
+            // 验证对齐结果
+            setTimeout(() => {
+                this.verifyTimeAxisAlignment();
+            }, 100);
+            
+        } catch (error) {
+            console.error('❌ [FORCE-ALIGN] 强制时间轴对齐失败:', error);
+        }
+    }
+    
+    /**
+     * 验证时间轴对齐
+     */
+    verifyTimeAxisAlignment() {
+        if (!this.chart) return;
+        
+        const mainLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+        const mainBarSpacing = this.chart.timeScale().options().barSpacing;
+        
+        console.log('🔍 [VERIFY-ALIGN] 验证时间轴对齐...');
+        console.log('🔍 [VERIFY-ALIGN] 主图:', { logicalRange: mainLogicalRange, barSpacing: mainBarSpacing });
+        
+        let alignmentIssues = [];
+        
+        // 检查成交量图对齐
+        if (this.volumeChart && this.volumeChart.chart) {
+            const volumeLogicalRange = this.volumeChart.chart.timeScale().getVisibleLogicalRange();
+            const volumeBarSpacing = this.volumeChart.chart.timeScale().options().barSpacing;
+            
+            console.log('🔍 [VERIFY-ALIGN] 成交量图:', { logicalRange: volumeLogicalRange, barSpacing: volumeBarSpacing });
+            
+            const logicalFromDiff = Math.abs((mainLogicalRange?.from || 0) - (volumeLogicalRange?.from || 0));
+            const logicalToDiff = Math.abs((mainLogicalRange?.to || 0) - (volumeLogicalRange?.to || 0));
+            const spacingDiff = Math.abs(mainBarSpacing - volumeBarSpacing);
+            
+            if (logicalFromDiff > 0.1 || logicalToDiff > 0.1 || spacingDiff > 0.1) {
+                alignmentIssues.push('成交量图');
+                console.warn('⚠️ [VERIFY-ALIGN] 成交量图对齐有误:', {
+                    logicalFromDiff, logicalToDiff, spacingDiff
+                });
+            }
+        }
+        
+        // 检查Squeeze图对齐
+        if (this.squeezeChart && this.squeezeChart.chart) {
+            const squeezeLogicalRange = this.squeezeChart.chart.timeScale().getVisibleLogicalRange();
+            const squeezeBarSpacing = this.squeezeChart.chart.timeScale().options().barSpacing;
+            
+            const logicalFromDiff = Math.abs((mainLogicalRange?.from || 0) - (squeezeLogicalRange?.from || 0));
+            const logicalToDiff = Math.abs((mainLogicalRange?.to || 0) - (squeezeLogicalRange?.to || 0));
+            const spacingDiff = Math.abs(mainBarSpacing - squeezeBarSpacing);
+            
+            if (logicalFromDiff > 0.1 || logicalToDiff > 0.1 || spacingDiff > 0.1) {
+                alignmentIssues.push('Squeeze图');
+                console.warn('⚠️ [VERIFY-ALIGN] Squeeze图对齐有误:', {
+                    logicalFromDiff, logicalToDiff, spacingDiff
+                });
+            }
+        }
+        
+        if (alignmentIssues.length === 0) {
+            console.log('✅ [VERIFY-ALIGN] 所有图表时间轴对齐正常');
+        } else {
+            console.warn(`⚠️ [VERIFY-ALIGN] 发现对齐问题: ${alignmentIssues.join(', ')}`);
+        }
+    }
 }
 
 // ================================
@@ -3496,6 +4014,11 @@ class VolumeChart extends BaseChart {
      */
     createVolumeSeries(ohlcData) {
         try {
+            // 🔍 DEBUG: 记录创建前的状态
+            console.log(`🔍 [VOLUME] 开始创建成交量系列，数据长度: ${ohlcData?.length}`);
+            const beforeCreateLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+            console.log(`🔍 [VOLUME] 创建前 logical range:`, beforeCreateLogicalRange);
+            
             // 处理成交量数据
             const volumeData = this.processVolumeData(ohlcData);
             
@@ -3503,6 +4026,8 @@ class VolumeChart extends BaseChart {
                 console.warn('⚠️ 没有有效的成交量数据');
                 return;
             }
+            
+            console.log(`🔍 [VOLUME] 处理后数据长度: ${volumeData.length}, 样本:`, volumeData.slice(0, 2));
             
             // 创建成交量柱状图系列
             this.volumeSeries = this.addSeries('histogram', {
@@ -3520,8 +4045,30 @@ class VolumeChart extends BaseChart {
                 return;
             }
             
+            // 🔍 DEBUG: 记录系列创建后的状态
+            const afterCreateLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+            console.log(`🔍 [VOLUME] 系列创建后 logical range:`, afterCreateLogicalRange);
+            
             // 设置成交量数据
+            console.log(`🔍 [VOLUME] 准备设置成交量数据...`);
             this.volumeSeries.setData(volumeData);
+            
+            // 🔍 DEBUG: 记录数据设置后的状态
+            setTimeout(() => {
+                const afterDataLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                console.log(`🔍 [VOLUME] 数据设置后 logical range:`, afterDataLogicalRange);
+                
+                // 检查主图的逻辑范围是否受到影响
+                const mainChart = ChartRegistry.getMainChart();
+                if (mainChart && mainChart.chart) {
+                    const mainLogicalRange = mainChart.chart.timeScale().getVisibleLogicalRange();
+                    console.log(`🔍 [VOLUME] 主图当前 logical range:`, mainLogicalRange);
+                    
+                    if (mainLogicalRange && mainLogicalRange.from < -0.01) {
+                        console.warn(`⚠️ [VOLUME-IMPACT] 成交量数据设置后主图逻辑范围变为负数: ${mainLogicalRange.from}`);
+                    }
+                }
+            }, 20);
             
             console.log(`✅ 成交量系列创建完成，数据点: ${volumeData.length}`);
             
