@@ -1099,7 +1099,41 @@ class BaseChart extends EventEmitter {
 // ================================
 class MainChart extends BaseChart {
         constructor(container) {
-        super(container, ChartConfig.getChartConfig('main'));
+        super(container, {
+            layout: {
+                background: { color: '#ffffff' },
+                textColor: '#333'
+            },
+            grid: {
+                vertLines: { color: '#e0e0e0' },
+                horzLines: { color: '#e0e0e0' }
+            },
+            timeScale: {
+                timeVisible: true,
+                secondsVisible: false,
+                barSpacing: 6,
+                rightOffset: 12
+            }
+        });
+        
+        // 共享时间刻度集成
+        this.sharedTimeScale = globalTimeScale;
+        this.chartId = this.generateId('main');
+        
+        // 注册到全局时间刻度管理器（主图）
+        this.sharedTimeScale.registerChart(this.chartId, this, true);
+        
+        this.stockInfos = []; // 存储股票信息的数组
+        this.seriesMap = new Map(); // series实例映射
+        this.stockColors = ['#2E8B57', '#FF6347', '#4169E1', '#DA70D6', '#FF8C00']; // 预定义颜色
+        this.volumeChart = null; // 成交量子图实例
+        this.squeezeChart = null; // Squeeze子图实例
+        this.normalizationEnabled = false; // 归一化状态
+        this.originalPriceRanges = new Map(); // 存储原始价格范围
+        this.originalIndicatorData = new Map(); // 存储原始指标数据
+        this._isVolumeLoaded = false; // 成交量数据加载状态
+        this._hasInitialFit = false; // 是否已进行初始适配
+        this._userIsZooming = false; // 用户是否正在缩放
         
         // 主图特有属性
         this.volumeSeries = null;
@@ -1109,23 +1143,13 @@ class MainChart extends BaseChart {
         this.originalIndicatorData = []; // 存储原始指标数据，用于归一化恢复
         this.currentOhlcData = null;
         this.subCharts = [];
-        this.stockInfos = []; // 存储股票信息
-        this.normalizationEnabled = false; // 价格归一化状态
-        this.normalizationRatios = []; // 存储每只股票的归一化比例
-        this.originalStockData = []; // 存储原始股票数据，用于归一化恢复
-        this.stockVisibility = []; // 股票可见性状态
         this.legendContainer = null; // 图例容器
         
         // 成交量子图相关
-        this.volumeChart = null;
         this.volumeContainer = null;
         
         // Squeeze子图相关
-        this.squeezeChart = null;
         this.squeezeContainer = null;
-        
-        // 注册为主图
-        ChartRegistry.register(this.id, this, true);
         
         console.log(`📊 MainChart 已创建: ${this.id}`);
     }
@@ -3922,14 +3946,34 @@ class MainChart extends BaseChart {
 // ================================
 class VolumeChart extends BaseChart {
     constructor(container) {
-        super(container, { ...ChartConfig.getChartConfig('volume'),   chartType: 'volume'   });
-
+        super(container, {
+            layout: {
+                background: { color: '#ffffff' },
+                textColor: '#333'
+            },
+            grid: {
+                vertLines: { color: '#e0e0e0' },
+                horzLines: { color: '#e0e0e0' }
+            },
+            timeScale: {
+                timeVisible: false,
+                secondsVisible: false,
+                barSpacing: 6,
+                rightOffset: 12
+            }
+        });
         
-        // 成交量图特有属性
+        // 共享时间刻度集成
+        this.sharedTimeScale = globalTimeScale;
+        this.chartId = this.generateId('volume');
+        
+        // 注册到全局时间刻度管理器（子图）
+        this.sharedTimeScale.registerChart(this.chartId, this, false);
+        
         this.volumeSeries = null;
-        this.mainStockData = null;
+        this.currentVolumeData = null;
         
-        console.log(`📊 VolumeChart 已创建: ${this.id}`);
+        console.log(`📊 VolumeChart 已创建: ${this.chartId}`);
     }
     
     onCreated() {
@@ -4156,14 +4200,34 @@ class VolumeChart extends BaseChart {
 // ================================
 class SqueezeChart extends BaseChart {
     constructor(container) {
-        super(container, { ...ChartConfig.getChartConfig('indicator'), chartType: 'indicator'});
+        super(container, {
+            layout: {
+                background: { color: '#ffffff' },
+                textColor: '#333'
+            },
+            grid: {
+                vertLines: { color: '#e0e0e0' },
+                horzLines: { color: '#e0e0e0' }
+            },
+            timeScale: {
+                timeVisible: false,
+                secondsVisible: false,
+                barSpacing: 6,
+                rightOffset: 12
+            }
+        });
         
-        // Squeeze图特有属性
-        this.momentumSeries = null;
-        this.zeroLineSeries = null;
-        this.mainStockData = null;
+        // 共享时间刻度集成
+        this.sharedTimeScale = globalTimeScale;
+        this.chartId = this.generateId('squeeze');
         
-        console.log(`📊 SqueezeChart 已创建: ${this.id}`);
+        // 注册到全局时间刻度管理器（子图）
+        this.sharedTimeScale.registerChart(this.chartId, this, false);
+        
+        this.squeezeSeries = null;
+        this.currentSqueezeData = null;
+        
+        console.log(`📊 SqueezeChart 已创建: ${this.chartId}`);
     }
     
     onCreated() {
@@ -4261,7 +4325,7 @@ class SqueezeChart extends BaseChart {
             }
             
             // 创建动量柱状图系列
-            this.momentumSeries = this.addSeries('histogram', {
+            this.squeezeSeries = this.addSeries('histogram', {
                 priceScaleId: 'right',
                 priceFormat: {
                     type: 'price',
@@ -4281,13 +4345,13 @@ class SqueezeChart extends BaseChart {
                 lastValueVisible: false
             });
             
-            if (!this.momentumSeries || !this.zeroLineSeries) {
+            if (!this.squeezeSeries || !this.zeroLineSeries) {
                 console.error('❌ Squeeze系列创建失败');
                 return;
             }
             
             // 设置数据
-            this.momentumSeries.setData(processedData.momentumData);
+            this.squeezeSeries.setData(processedData.momentumData);
             this.zeroLineSeries.setData(processedData.zeroLineData);
             
             console.log(`✅ Squeeze系列创建完成，动量数据点: ${processedData.momentumData.length}`);
@@ -4342,9 +4406,9 @@ class SqueezeChart extends BaseChart {
      * 更新Squeeze数据
      */
     updateSqueezeData(newData) {
-        if (this.momentumSeries && this.zeroLineSeries && newData) {
+        if (this.squeezeSeries && this.zeroLineSeries && newData) {
             const processedData = this.processSqueezeData(newData);
-            this.momentumSeries.setData(processedData.momentumData);
+            this.squeezeSeries.setData(processedData.momentumData);
             this.zeroLineSeries.setData(processedData.zeroLineData);
             console.log('📊 Squeeze数据已更新');
         }
@@ -4354,8 +4418,8 @@ class SqueezeChart extends BaseChart {
      * 清空Squeeze数据
      */
     clearSqueezeData() {
-        if (this.momentumSeries) {
-            this.momentumSeries.setData([]);
+        if (this.squeezeSeries) {
+            this.squeezeSeries.setData([]);
         }
         if (this.zeroLineSeries) {
             this.zeroLineSeries.setData([]);
@@ -4376,7 +4440,7 @@ class SqueezeChart extends BaseChart {
      */
     destroy() {
         try {
-            this.momentumSeries = null;
+            this.squeezeSeries = null;
             this.zeroLineSeries = null;
             this.mainStockData = null;
             
@@ -4442,3 +4506,177 @@ console.log('📊 可用组件:', {
     ChartRegistry: '图表注册器',
     BaseChart: '基础图表类'
 });
+
+/**
+ * 共享时间刻度管理器
+ * 用于统一管理主图和所有子图的时间轴同步
+ */
+class SharedTimeScale extends EventEmitter {
+    constructor() {
+        super();
+        this.currentDomain = null;           // 当前时间域 {from, to}
+        this.currentLogicalRange = null;     // 当前逻辑范围 {from, to}
+        this.currentBarSpacing = null;       // 当前K线间距
+        this.currentRightOffset = 12;        // 右侧偏移
+        this.charts = new Map();             // 注册的图表 Map<chartId, chartInstance>
+        this.isUpdating = false;             // 防止循环更新的标志
+        
+        console.log('🔧 [SHARED-TIME] 共享时间刻度管理器已创建');
+    }
+    
+    /**
+     * 注册图表到共享时间刻度
+     */
+    registerChart(chartId, chartInstance, isPrimary = false) {
+        this.charts.set(chartId, {
+            instance: chartInstance,
+            isPrimary: isPrimary
+        });
+        
+        console.log(`📝 [SHARED-TIME] 注册图表: ${chartId}, 主图: ${isPrimary}`);
+        
+        // 如果是主图，监听其时间轴变化
+        if (isPrimary && chartInstance.chart) {
+            this.setupPrimaryChartListeners(chartInstance.chart);
+        }
+    }
+    
+    /**
+     * 设置主图的监听器
+     */
+    setupPrimaryChartListeners(primaryChart) {
+        // 监听时间域变化
+        primaryChart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+            if (!this.isUpdating && timeRange) {
+                this.updateDomain(timeRange);
+            }
+        });
+        
+        // 监听逻辑范围变化
+        primaryChart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+            if (!this.isUpdating && logicalRange) {
+                this.updateLogicalRange(logicalRange);
+            }
+        });
+    }
+    
+    /**
+     * 更新时间域并同步到所有图表
+     */
+    updateDomain(newDomain) {
+        this.currentDomain = newDomain;
+        this.syncAllCharts();
+        console.log(`🔄 [SHARED-TIME] 时间域更新:`, newDomain);
+    }
+    
+    /**
+     * 更新逻辑范围并同步到所有图表
+     */
+    updateLogicalRange(newLogicalRange) {
+        this.currentLogicalRange = newLogicalRange;
+        this.syncAllCharts();
+        console.log(`🔄 [SHARED-TIME] 逻辑范围更新:`, newLogicalRange);
+    }
+    
+    /**
+     * 同步所有子图的时间轴
+     */
+    syncAllCharts() {
+        if (this.isUpdating) return;
+        
+        this.isUpdating = true;
+        let syncCount = 0;
+        
+        try {
+            this.charts.forEach(({ instance, isPrimary }, chartId) => {
+                if (!isPrimary && instance.chart) {
+                    const timeScale = instance.chart.timeScale();
+                    try {
+                        // 同步时间域
+                        if (this.currentDomain) {
+                            timeScale.setVisibleRange(this.currentDomain);
+                        }
+                        
+                        // 同步逻辑范围
+                        if (this.currentLogicalRange) {
+                            timeScale.setVisibleLogicalRange(this.currentLogicalRange);
+                        }
+                        
+                        // 同步barSpacing和rightOffset
+                        const options = {};
+                        if (this.currentBarSpacing !== null) {
+                            options.barSpacing = this.currentBarSpacing;
+                        }
+                        if (this.currentRightOffset !== null) {
+                            options.rightOffset = this.currentRightOffset;
+                        }
+                        if (Object.keys(options).length > 0) {
+                            timeScale.applyOptions(options);
+                        }
+                        
+                        syncCount++;
+                        console.log(`✅ [SHARED-TIME] 图表 ${chartId} 同步完成`);
+                    } catch (e) {
+                        console.error(`❌ [SHARED-TIME] 同步图表 ${chartId} 失败:`, e.message);
+                    }
+                }
+            });
+            
+            if (syncCount > 0) {
+                console.log(`🔄 [SHARED-TIME] 成功同步 ${syncCount} 个子图`);
+            }
+        } finally {
+            this.isUpdating = false;
+        }
+    }
+    
+    /**
+     * 注销图表
+     */
+    unregisterChart(chartId) {
+        if (this.charts.has(chartId)) {
+            this.charts.delete(chartId);
+            console.log(`🗑️ [SHARED-TIME] 注销图表: ${chartId}`);
+        }
+    }
+    
+    /**
+     * 强制同步所有图表（用于初始化后的对齐）
+     */
+    forceSync() {
+        console.log('🔧 [SHARED-TIME] 执行强制同步...');
+        
+        // 获取主图的当前状态
+        const primaryChart = this.getPrimaryChart();
+        if (primaryChart && primaryChart.chart) {
+            const timeScale = primaryChart.chart.timeScale();
+            this.currentDomain = timeScale.getVisibleRange();
+            this.currentLogicalRange = timeScale.getVisibleLogicalRange();
+            this.currentBarSpacing = timeScale.options().barSpacing;
+            this.currentRightOffset = timeScale.options().rightOffset;
+            
+            console.log('🔍 [SHARED-TIME] 主图当前状态:', {
+                domain: this.currentDomain,
+                logical: this.currentLogicalRange,
+                barSpacing: this.currentBarSpacing
+            });
+        }
+        
+        this.syncAllCharts();
+    }
+    
+    /**
+     * 获取主图实例
+     */
+    getPrimaryChart() {
+        for (const [chartId, { instance, isPrimary }] of this.charts) {
+            if (isPrimary) {
+                return instance;
+            }
+        }
+        return null;
+    }
+}
+
+// 全局共享时间刻度管理器实例
+const globalTimeScale = new SharedTimeScale();
