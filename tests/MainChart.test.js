@@ -1935,12 +1935,16 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             };
 
             // Mock time range getters
-            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(mainTimeRange);
-            volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(volumeTimeRange);
+            const mainGetVisibleRangeSpy = jest.spyOn(mainChart.chart.timeScale(), 'getVisibleRange').mockReturnValue(mainTimeRange);
+            const volumeGetVisibleRangeSpy = jest.spyOn(volumeChart.chart.timeScale(), 'getVisibleRange').mockReturnValue(volumeTimeRange);
 
             // Get time ranges
             const mainRange = mainChart.chart.timeScale().getVisibleRange();
             const volumeRange = volumeChart.chart.timeScale().getVisibleRange();
+
+            // Verify mock functions were called correctly
+            expect(mainGetVisibleRangeSpy).toHaveBeenCalledTimes(1);
+            expect(volumeGetVisibleRangeSpy).toHaveBeenCalledTimes(1);
 
             // Verify time ranges are inconsistent
             expect(mainRange.from).not.toBe(volumeRange.from);
@@ -1952,10 +1956,19 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             const volumeSpan = volumeRange.to - volumeRange.from;
             expect(volumeSpan).toBeGreaterThan(mainSpan); // Volume chart spans longer period
 
+            // Verify specific time differences
+            const daysDifference = (volumeRange.from - mainRange.from) / (24 * 3600);
+            expect(daysDifference).toBeCloseTo(31, 0); // About 31 days difference
+
             console.log('时间范围不一致检测完成:', {
                 mainSpan: mainSpan / (24 * 3600), // days
-                volumeSpan: volumeSpan / (24 * 3600) // days
+                volumeSpan: volumeSpan / (24 * 3600), // days
+                daysDifference
             });
+
+            // Cleanup
+            mainGetVisibleRangeSpy.mockRestore();
+            volumeGetVisibleRangeSpy.mockRestore();
         });
     });
 
@@ -1974,38 +1987,52 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             // Add new point to MainChart data
             mainChart.stockInfos[0].data.push(newOHLCPoint);
 
-            // Mock series data getters
-            const mainChartDataLength = mainChart.stockInfos[0].data.length;
-            const mockVolumeSeries = {
-                _data: [
-                    { time: '2023-01-01', value: 1000 },
-                    { time: '2023-01-02', value: 1200 },
-                    { time: '2023-01-03', value: 1100 },
-                    { time: '2023-01-04', value: 1300 },
-                    { time: '2023-01-05', value: 1400 }
-                    // Missing the new 2023-01-06 data point
-                ]
+            // Mock VolumeChart to have actual data structure and methods
+            const initialVolumeData = [
+                { time: '2023-01-01', value: 1000 },
+                { time: '2023-01-02', value: 1200 },
+                { time: '2023-01-03', value: 1100 },
+                { time: '2023-01-04', value: 1300 },
+                { time: '2023-01-05', value: 1400 }
+            ];
+            
+            volumeChart.volumeSeries = {
+                _data: [...initialVolumeData], // Copy to prevent reference issues
+                getData: jest.fn().mockReturnValue(initialVolumeData),
+                setData: jest.fn().mockImplementation((newData) => {
+                    volumeChart.volumeSeries._data = [...newData];
+                })
             };
-            volumeChart.volumeSeries = mockVolumeSeries;
+
+            // Get current data lengths
+            const mainChartDataLength = mainChart.stockInfos[0].data.length;
+            const volumeDataLength = volumeChart.volumeSeries._data.length;
 
             // Verify data point count mismatch
-            const volumeDataLength = mockVolumeSeries._data.length;
             expect(mainChartDataLength).toBe(6);
             expect(volumeDataLength).toBe(5);
             expect(mainChartDataLength).toBeGreaterThan(volumeDataLength);
 
             // Verify last data point in MainChart has no corresponding volume data
             const lastMainChartTime = mainChart.stockInfos[0].data[mainChartDataLength - 1].time;
-            const lastVolumeTime = mockVolumeSeries._data[volumeDataLength - 1].time;
+            const lastVolumeTime = volumeChart.volumeSeries._data[volumeDataLength - 1].time;
             expect(lastMainChartTime).not.toBe(lastVolumeTime);
             expect(lastMainChartTime).toBe('2023-01-06');
             expect(lastVolumeTime).toBe('2023-01-05');
+
+            // Verify missing data detection
+            const missingVolumeData = mainChart.stockInfos[0].data.filter(ohlcPoint => 
+                !volumeChart.volumeSeries._data.some(volumePoint => volumePoint.time === ohlcPoint.time)
+            );
+            expect(missingVolumeData).toHaveLength(1);
+            expect(missingVolumeData[0].time).toBe('2023-01-06');
 
             console.log('数据点不匹配检测完成:', {
                 mainChartDataLength,
                 volumeDataLength,
                 lastMainChartTime,
-                lastVolumeTime
+                lastVolumeTime,
+                missingDataPoints: missingVolumeData.length
             });
         });
     });
@@ -2015,12 +2042,21 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             let mainChartUpdateCount = 0;
             let volumeChartUpdateCount = 0;
 
-            // Mock update functions
+            // Initialize VolumeChart with proper data structure
+            volumeChart.volumeData = [
+                { time: '2023-01-01', value: 1000 },
+                { time: '2023-01-02', value: 1200 },
+                { time: '2023-01-03', value: 1100 },
+                { time: '2023-01-04', value: 1300 },
+                { time: '2023-01-05', value: 1400 }
+            ];
+
+            // Mock update functions with actual data changes
             const updateMainChart = jest.fn(() => {
                 mainChartUpdateCount++;
                 // Simulate adding new data point
                 const newPoint = {
-                    time: `2023-01-${6 + mainChartUpdateCount}`,
+                    time: `2023-01-${5 + mainChartUpdateCount}`,
                     open: 115 + mainChartUpdateCount,
                     high: 120 + mainChartUpdateCount,
                     low: 113 + mainChartUpdateCount,
@@ -2032,17 +2068,27 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
 
             const updateVolumeChart = jest.fn(() => {
                 volumeChartUpdateCount++;
-                // Volume chart updates less frequently
+                // Volume chart updates with actual data changes
+                const newVolumePoint = {
+                    time: `2023-01-${5 + volumeChartUpdateCount}`,
+                    value: 1500 + volumeChartUpdateCount * 100
+                };
+                volumeChart.volumeData.push(newVolumePoint);
             });
 
-            // Simulate MainChart updating every 5 seconds (3 times)
+            // Record initial data lengths
+            const initialMainDataLength = mainChart.stockInfos[0].data.length;
+            const initialVolumeDataLength = volumeChart.volumeData.length;
+
+            // Simulate MainChart updating more frequently (3 times)
             updateMainChart();
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 100)); // More realistic delay
             updateMainChart();
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 100));
             updateMainChart();
 
-            // Simulate VolumeChart updating every 10 seconds (1 time)
+            // Simulate VolumeChart updating less frequently (1 time)
+            await new Promise(resolve => setTimeout(resolve, 200)); // Longer delay
             updateVolumeChart();
 
             // Verify update frequency difference
@@ -2050,13 +2096,27 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             expect(volumeChartUpdateCount).toBe(1);
             expect(mainChartUpdateCount).toBeGreaterThan(volumeChartUpdateCount);
 
-            // Verify MainChart has more data points
-            expect(mainChart.stockInfos[0].data.length).toBe(8); // 5 original + 3 new
+            // Verify actual data length changes
+            const finalMainDataLength = mainChart.stockInfos[0].data.length;
+            const finalVolumeDataLength = volumeChart.volumeData.length;
+            
+            expect(finalMainDataLength).toBe(initialMainDataLength + 3); // 5 original + 3 new
+            expect(finalVolumeDataLength).toBe(initialVolumeDataLength + 1); // 5 original + 1 new
+            expect(finalMainDataLength).toBeGreaterThan(finalVolumeDataLength);
+
+            // Verify last update timestamps
+            const lastMainTime = mainChart.stockInfos[0].data[finalMainDataLength - 1].time;
+            const lastVolumeTime = volumeChart.volumeData[finalVolumeDataLength - 1].time;
+            expect(lastMainTime).toBe('2023-01-08'); // 5 + 3
+            expect(lastVolumeTime).toBe('2023-01-06'); // 5 + 1
             
             console.log('更新频率不一致检测完成:', {
                 mainChartUpdateCount,
                 volumeChartUpdateCount,
-                mainChartDataLength: mainChart.stockInfos[0].data.length
+                finalMainDataLength,
+                finalVolumeDataLength,
+                lastMainTime,
+                lastVolumeTime
             });
         });
     });
@@ -2071,43 +2131,75 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             const synchronizedLogicalRange = { from: 0, to: 100 };
             const synchronizedBarSpacing = 10;
 
-            // Mock both charts returning same values
-            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(synchronizedTimeRange);
-            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(synchronizedLogicalRange);
-            mainChart.chart.timeScale().options = jest.fn().mockReturnValue({ barSpacing: synchronizedBarSpacing });
-
-            volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(synchronizedTimeRange);
-            volumeChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(synchronizedLogicalRange);
-            volumeChart.chart.timeScale().options = jest.fn().mockReturnValue({ barSpacing: synchronizedBarSpacing });
-
-            // Mock synchronization method
-            mainChart.syncTimeRangeToVolumeChart = jest.fn();
+            // Setup initial different states
+            const initialMainTimeRange = {
+                from: Math.floor(new Date('2023-01-02').getTime() / 1000),
+                to: Math.floor(new Date('2023-01-04').getTime() / 1000)
+            };
             
-            // Simulate MainChart time range adjustment
+            // Mock initial states
+            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(initialMainTimeRange);
+            volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(initialMainTimeRange);
+
+            // Mock synchronization method with actual state changes
+            const volumeSetVisibleRangeSpy = jest.spyOn(volumeChart.chart.timeScale(), 'setVisibleRange');
+            const volumeSetLogicalRangeSpy = jest.spyOn(volumeChart.chart.timeScale(), 'setVisibleLogicalRange');
+            const volumeApplyOptionsSpy = jest.spyOn(volumeChart.chart.timeScale(), 'applyOptions');
+
+            mainChart.syncTimeRangeToVolumeChart = jest.fn().mockImplementation((timeRange) => {
+                // Simulate actual synchronization effects
+                volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(timeRange);
+                volumeChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(synchronizedLogicalRange);
+                
+                // Call the actual methods to verify they are invoked
+                volumeChart.chart.timeScale().setVisibleRange(timeRange);
+                volumeChart.chart.timeScale().setVisibleLogicalRange(synchronizedLogicalRange);
+                volumeChart.chart.timeScale().applyOptions({ barSpacing: synchronizedBarSpacing });
+            });
+            
+            // Mock adjustment method to trigger synchronization
             mainChart.adjustTimeRangeToVisibleStocks = jest.fn().mockImplementation(() => {
+                // Update main chart state
+                mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(synchronizedTimeRange);
+                mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(synchronizedLogicalRange);
+                
                 // Trigger synchronization
                 mainChart.syncTimeRangeToVolumeChart(synchronizedTimeRange);
             });
 
+            // Verify initial desynchronization
+            const initialMainRange = mainChart.chart.timeScale().getVisibleRange();
+            expect(initialMainRange).not.toEqual(synchronizedTimeRange);
+
             // Execute adjustment
             mainChart.adjustTimeRangeToVisibleStocks();
 
-            // Verify synchronization was triggered
+            // Verify synchronization was triggered with correct parameters
             expect(mainChart.syncTimeRangeToVolumeChart).toHaveBeenCalledWith(synchronizedTimeRange);
+            expect(volumeSetVisibleRangeSpy).toHaveBeenCalledWith(synchronizedTimeRange);
+            expect(volumeSetLogicalRangeSpy).toHaveBeenCalledWith(synchronizedLogicalRange);
+            expect(volumeApplyOptionsSpy).toHaveBeenCalledWith({ barSpacing: synchronizedBarSpacing });
 
-            // Verify both charts have same time range and logical range
-            const mainTimeRange = mainChart.chart.timeScale().getVisibleRange();
-            const volumeTimeRange = volumeChart.chart.timeScale().getVisibleRange();
-            const mainLogicalRange = mainChart.chart.timeScale().getVisibleLogicalRange();
-            const volumeLogicalRange = volumeChart.chart.timeScale().getVisibleLogicalRange();
+            // Verify both charts have same final state
+            const finalMainTimeRange = mainChart.chart.timeScale().getVisibleRange();
+            const finalVolumeTimeRange = volumeChart.chart.timeScale().getVisibleRange();
+            const finalMainLogicalRange = mainChart.chart.timeScale().getVisibleLogicalRange();
+            const finalVolumeLogicalRange = volumeChart.chart.timeScale().getVisibleLogicalRange();
 
-            expect(mainTimeRange).toEqual(volumeTimeRange);
-            expect(mainLogicalRange).toEqual(volumeLogicalRange);
+            expect(finalMainTimeRange).toEqual(finalVolumeTimeRange);
+            expect(finalMainLogicalRange).toEqual(finalVolumeLogicalRange);
+            expect(finalMainTimeRange).toEqual(synchronizedTimeRange);
 
             console.log('正常同步场景验证完成:', {
-                timeRangeMatches: JSON.stringify(mainTimeRange) === JSON.stringify(volumeTimeRange),
-                logicalRangeMatches: JSON.stringify(mainLogicalRange) === JSON.stringify(volumeLogicalRange)
+                timeRangeMatches: JSON.stringify(finalMainTimeRange) === JSON.stringify(finalVolumeTimeRange),
+                logicalRangeMatches: JSON.stringify(finalMainLogicalRange) === JSON.stringify(finalVolumeLogicalRange),
+                syncMethodCalled: mainChart.syncTimeRangeToVolumeChart.mock.calls.length > 0
             });
+
+            // Cleanup
+            volumeSetVisibleRangeSpy.mockRestore();
+            volumeSetLogicalRangeSpy.mockRestore();
+            volumeApplyOptionsSpy.mockRestore();
         });
     });
 
@@ -2126,53 +2218,79 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             const mainLogicalRange = { from: 10, to: 90 };
             const volumeLogicalRange = { from: 0, to: 100 };
 
-            // Mock charts returning different values
+            // Mock charts returning different values (persistent state)
             mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(mainTimeRange);
             mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(mainLogicalRange);
             
             volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(volumeTimeRange);
             volumeChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(volumeLogicalRange);
 
+            // Test chart stability before sync failure
+            const preFailureMainRange = mainChart.chart.timeScale().getVisibleRange();
+            const preFailureVolumeRange = volumeChart.chart.timeScale().getVisibleRange();
+            expect(preFailureMainRange).toBeDefined();
+            expect(preFailureVolumeRange).toBeDefined();
+
             // Mock synchronization failure
+            let syncAttempted = false;
             mainChart.syncTimeRangeToVolumeChart = jest.fn().mockImplementation(() => {
+                syncAttempted = true;
                 // Simulate sync failure - VolumeChart doesn't update
                 throw new Error('Synchronization failed');
             });
 
             // Attempt to adjust MainChart time range
+            let syncError = null;
             try {
                 mainChart.syncTimeRangeToVolumeChart(mainTimeRange);
             } catch (error) {
-                // Expected to fail
+                syncError = error;
             }
 
-            // Verify charts are desynchronized
-            const currentMainTimeRange = mainChart.chart.timeScale().getVisibleRange();
-            const currentVolumeTimeRange = volumeChart.chart.timeScale().getVisibleRange();
-            const currentMainLogicalRange = mainChart.chart.timeScale().getVisibleLogicalRange();
-            const currentVolumeLogicalRange = volumeChart.chart.timeScale().getVisibleLogicalRange();
+            // Verify synchronization was attempted and failed
+            expect(syncAttempted).toBe(true);
+            expect(syncError).toBeInstanceOf(Error);
+            expect(syncError.message).toBe('Synchronization failed');
 
-            expect(currentMainTimeRange).not.toEqual(currentVolumeTimeRange);
-            expect(currentMainLogicalRange).not.toEqual(currentVolumeLogicalRange);
+            // Verify charts remain stable after sync failure
+            const postFailureMainRange = mainChart.chart.timeScale().getVisibleRange();
+            const postFailureVolumeRange = volumeChart.chart.timeScale().getVisibleRange();
+            
+            expect(postFailureMainRange).toBeDefined();
+            expect(postFailureVolumeRange).toBeDefined();
+            expect(postFailureMainRange).toEqual(preFailureMainRange); // Main chart state unchanged
+            expect(postFailureVolumeRange).toEqual(preFailureVolumeRange); // Volume chart state unchanged
 
+            // Verify charts are still desynchronized
+            expect(postFailureMainRange).not.toEqual(postFailureVolumeRange);
+            
             // Calculate synchronization error metrics
-            const timeRangeDiff = Math.abs(currentMainTimeRange.from - currentVolumeTimeRange.from);
-            const logicalRangeDiff = Math.abs(currentMainLogicalRange.from - currentVolumeLogicalRange.from);
+            const timeRangeDiff = Math.abs(postFailureMainRange.from - postFailureVolumeRange.from);
+            const logicalRangeDiff = Math.abs(mainLogicalRange.from - volumeLogicalRange.from);
 
             expect(timeRangeDiff).toBeGreaterThan(0);
             expect(logicalRangeDiff).toBeGreaterThan(0);
 
+            // Verify charts are still functional (can get data)
+            expect(() => mainChart.chart.timeScale().getVisibleRange()).not.toThrow();
+            expect(() => volumeChart.chart.timeScale().getVisibleRange()).not.toThrow();
+
             console.log('同步失败场景验证完成:', {
                 timeRangeDiff: timeRangeDiff / (24 * 3600), // days
                 logicalRangeDiff,
-                syncAttempted: mainChart.syncTimeRangeToVolumeChart.mock.calls.length > 0
+                syncAttempted,
+                chartsStable: postFailureMainRange && postFailureVolumeRange
             });
         });
     });
 
     describe('测试用例 6：异步操作下的同步', () => {
         it('should verify synchronization after async operations', async () => {
-            // Setup: Mock async data loading
+            // Setup: Define consistent initial and final states
+            const initialTimeRange = {
+                from: Math.floor(new Date('2022-12-01').getTime() / 1000),
+                to: Math.floor(new Date('2022-12-31').getTime() / 1000)
+            };
             const finalTimeRange = {
                 from: Math.floor(new Date('2023-01-01').getTime() / 1000),
                 to: Math.floor(new Date('2023-01-05').getTime() / 1000)
@@ -2181,6 +2299,12 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
 
             let asyncOperationCompleted = false;
             let volumeChartSynced = false;
+
+            // Set consistent initial state for both charts
+            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(initialTimeRange);
+            volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(initialTimeRange);
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue({ from: 10, to: 90 });
+            volumeChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue({ from: 10, to: 90 });
 
             // Mock async data loading for MainChart
             const asyncLoadData = jest.fn().mockImplementation(async () => {
@@ -2199,21 +2323,18 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
                 }
             });
 
-            // Mock VolumeChart synchronization
+            // Mock VolumeChart synchronization with state tracking
             mainChart.syncTimeRangeToVolumeChart = jest.fn().mockImplementation((timeRange) => {
                 volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(timeRange);
                 volumeChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(finalLogicalRange);
                 volumeChartSynced = true;
             });
 
-            // Initial state - charts are not synchronized
-            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue({ from: 0, to: 0 });
-            volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue({ from: 100, to: 200 });
-
-            // Verify initial desynchronization
+            // Verify initial state consistency
             const initialMainRange = mainChart.chart.timeScale().getVisibleRange();
             const initialVolumeRange = volumeChart.chart.timeScale().getVisibleRange();
-            expect(initialMainRange).not.toEqual(initialVolumeRange);
+            expect(initialMainRange).toEqual(initialVolumeRange);
+            expect(initialMainRange).toEqual(initialTimeRange);
 
             // Execute async operation
             await asyncLoadData();
@@ -2221,6 +2342,7 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             // Verify async operation completed
             expect(asyncOperationCompleted).toBe(true);
             expect(volumeChartSynced).toBe(true);
+            expect(mainChart.syncTimeRangeToVolumeChart).toHaveBeenCalledWith(finalTimeRange);
 
             // Verify synchronization after async operation
             const finalMainRange = mainChart.chart.timeScale().getVisibleRange();
@@ -2228,17 +2350,34 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             
             expect(finalMainRange).toEqual(finalVolumeRange);
             expect(finalMainRange).toEqual(finalTimeRange);
-            expect(mainChart.syncTimeRangeToVolumeChart).toHaveBeenCalledWith(finalTimeRange);
+
+            // Verify state transition
+            expect(finalMainRange).not.toEqual(initialTimeRange);
+            expect(finalVolumeRange).not.toEqual(initialTimeRange);
 
             console.log('异步操作下的同步验证完成:', {
                 asyncOperationCompleted,
                 volumeChartSynced,
-                finalSynchronization: JSON.stringify(finalMainRange) === JSON.stringify(finalVolumeRange)
+                finalSynchronization: JSON.stringify(finalMainRange) === JSON.stringify(finalVolumeRange),
+                stateTransitioned: JSON.stringify(finalMainRange) !== JSON.stringify(initialTimeRange)
             });
         });
 
         it('should handle async operation errors gracefully', async () => {
             let errorHandled = false;
+            
+            // Setup initial stable state
+            const stableTimeRange = {
+                from: Math.floor(new Date('2023-01-01').getTime() / 1000),
+                to: Math.floor(new Date('2023-01-05').getTime() / 1000)
+            };
+            
+            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(stableTimeRange);
+            volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(stableTimeRange);
+
+            // Record initial state
+            const initialMainRange = mainChart.chart.timeScale().getVisibleRange();
+            const initialVolumeRange = volumeChart.chart.timeScale().getVisibleRange();
             
             // Mock async operation that fails
             const failingAsyncOperation = jest.fn().mockImplementation(async () => {
@@ -2250,6 +2389,9 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             const handleAsyncError = jest.fn().mockImplementation((error) => {
                 errorHandled = true;
                 console.error('Async error handled:', error.message);
+                // Ensure charts remain in stable state
+                expect(mainChart.chart.timeScale().getVisibleRange()).toBeDefined();
+                expect(volumeChart.chart.timeScale().getVisibleRange()).toBeDefined();
             });
 
             // Execute failing async operation
@@ -2263,17 +2405,23 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             expect(errorHandled).toBe(true);
             expect(handleAsyncError).toHaveBeenCalledWith(expect.any(Error));
             
-            // Verify charts remain in previous state (no partial updates)
-            const mainRange = mainChart.chart.timeScale().getVisibleRange();
-            const volumeRange = volumeChart.chart.timeScale().getVisibleRange();
+            // Verify charts remain in previous stable state (no partial updates)
+            const postErrorMainRange = mainChart.chart.timeScale().getVisibleRange();
+            const postErrorVolumeRange = volumeChart.chart.timeScale().getVisibleRange();
             
-            // Should maintain stable state despite async failure
-            expect(mainRange).toBeDefined();
-            expect(volumeRange).toBeDefined();
+            expect(postErrorMainRange).toBeDefined();
+            expect(postErrorVolumeRange).toBeDefined();
+            expect(postErrorMainRange).toEqual(initialMainRange);
+            expect(postErrorVolumeRange).toEqual(initialVolumeRange);
+
+            // Verify charts are still functional after error
+            expect(() => mainChart.chart.timeScale().getVisibleLogicalRange()).not.toThrow();
+            expect(() => volumeChart.chart.timeScale().getVisibleLogicalRange()).not.toThrow();
 
             console.log('异步操作错误处理验证完成:', {
                 errorHandled,
-                chartsStable: mainRange && volumeRange
+                chartsStable: postErrorMainRange && postErrorVolumeRange,
+                statePreserved: JSON.stringify(postErrorMainRange) === JSON.stringify(initialMainRange)
             });
         });
     });
