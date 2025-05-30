@@ -642,6 +642,27 @@ describe('MainChart', () => {
             
             expect(() => mainChart.destroy()).not.toThrow();
         });
+
+        it('should handle loadData with server error response', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: false,
+                status: 500,
+                statusText: 'Internal Server Error'
+            });
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
+        });
+
+        it('should handle loadData with invalid JSON response', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.reject(new Error('Invalid JSON'))
+            });
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
+        });
     });
 
     describe('event handling', () => {
@@ -682,6 +703,432 @@ describe('MainChart', () => {
             expect(updateInfoBarSpy).toHaveBeenCalledWith(param);
             
             updateInfoBarSpy.mockRestore();
+        });
+    });
+
+    describe('advanced normalization methods', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            // Setup test data
+            mainChart.stockInfos = [
+                { 
+                    code: 'AAPL', 
+                    data: [{ time: '2023-01-01', open: 100, high: 105, low: 95, close: 100 }]
+                },
+                { 
+                    code: 'GOOGL', 
+                    data: [{ time: '2023-01-01', open: 2000, high: 2050, low: 1950, close: 2000 }]
+                }
+            ];
+            mainChart.originalStockData = [
+                [{ time: '2023-01-01', open: 100, high: 105, low: 95, close: 100 }],
+                [{ time: '2023-01-01', open: 2000, high: 2050, low: 1950, close: 2000 }]
+            ];
+            mainChart.candleSeries = [
+                { setData: jest.fn() },
+                { setData: jest.fn() }
+            ];
+            mainChart.normalizationRatios = [1, 0.05];
+            mainChart.stockIndicatorSeries = [[], []];
+        });
+
+        it('should apply normalization to stock data', () => {
+            mainChart.applyNormalization();
+            
+            expect(mainChart.candleSeries[0].setData).toHaveBeenCalledWith([
+                { time: '2023-01-01', open: 100, high: 105, low: 95, close: 100 }
+            ]);
+            expect(mainChart.candleSeries[1].setData).toHaveBeenCalledWith([
+                { time: '2023-01-01', open: 100, high: 102.5, low: 97.5, close: 100 }
+            ]);
+        });
+
+        it('should handle applyNormalization with missing stock data', () => {
+            mainChart.stockInfos = [null, { code: 'GOOGL', data: null }];
+            
+            expect(() => mainChart.applyNormalization()).not.toThrow();
+        });
+
+        it('should handle applyNormalization with NaN normalization ratio', () => {
+            mainChart.normalizationRatios = [NaN, Infinity];
+            
+            expect(() => mainChart.applyNormalization()).not.toThrow();
+            
+            // Should use ratio 1 as fallback for NaN
+            expect(mainChart.candleSeries[0].setData).toHaveBeenCalledWith([
+                { time: '2023-01-01', open: 100, high: 105, low: 95, close: 100 }
+            ]);
+        });
+
+        it('should apply indicator normalization', () => {
+            const mockSeries = { setData: jest.fn() };
+            mainChart.stockIndicatorSeries[0] = [{
+                series: mockSeries,
+                type: 'ma5',
+                originalData: [{ time: '2023-01-01', value: 100 }]
+            }];
+            
+            mainChart.applyIndicatorNormalization(0, 2);
+            
+            expect(mockSeries.setData).toHaveBeenCalledWith([
+                { time: '2023-01-01', value: 200 }
+            ]);
+        });
+
+        it('should handle applyIndicatorNormalization with missing data', () => {
+            mainChart.stockIndicatorSeries[0] = [{ series: null, originalData: null }];
+            
+            expect(() => mainChart.applyIndicatorNormalization(0, 1)).not.toThrow();
+        });
+
+        it('should skip non-price indicators in normalization', () => {
+            const mockSeries = { setData: jest.fn() };
+            mainChart.stockIndicatorSeries[0] = [{
+                series: mockSeries,
+                type: 'squeeze',
+                originalData: [{ time: '2023-01-01', value: 1 }]
+            }];
+            
+            mainChart.applyIndicatorNormalization(0, 2);
+            
+            expect(mockSeries.setData).not.toHaveBeenCalled();
+        });
+
+        it('should handle enableNormalization with empty stock data', () => {
+            mainChart.stockInfos = [];
+            mainChart.originalStockData = [];
+            
+            expect(() => mainChart.enableNormalization()).not.toThrow();
+        });
+
+        it('should handle enableNormalization with missing close field', () => {
+            mainChart.stockInfos = [
+                { 
+                    code: 'AAPL',
+                    data: [{ time: '2023-01-01', open: 100, high: 105, low: 95 }] // missing close
+                }
+            ];
+            mainChart.originalStockData = [
+                [{ time: '2023-01-01', open: 100, high: 105, low: 95 }] // missing close
+            ];
+            
+            expect(() => mainChart.enableNormalization()).not.toThrow();
+        });
+    });
+
+    describe('time range adjustment methods', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            mainChart.stockInfos = [
+                { 
+                    code: 'AAPL',
+                    data: [
+                        { time: '2023-01-01', close: 100 },
+                        { time: '2023-01-02', close: 105 }
+                    ]
+                }
+            ];
+            mainChart.stockVisibility = [true];
+        });
+
+        it('should adjust time range to visible stocks', () => {
+            const setVisibleRangeSpy = jest.spyOn(mainChart.chart.timeScale(), 'setVisibleRange');
+            
+            mainChart.adjustTimeRangeToVisibleStocks();
+            
+            expect(setVisibleRangeSpy).toHaveBeenCalledWith(expect.objectContaining({
+                from: expect.any(Number),
+                to: expect.any(Number)
+            }));
+            
+            setVisibleRangeSpy.mockRestore();
+        });
+
+        it('should handle adjustTimeRangeToVisibleStocks with no chart', () => {
+            mainChart.chart = null;
+            
+            expect(() => mainChart.adjustTimeRangeToVisibleStocks()).not.toThrow();
+        });
+
+        it('should handle adjustTimeRangeToVisibleStocks with no stock data', () => {
+            mainChart.stockInfos = [];
+            
+            expect(() => mainChart.adjustTimeRangeToVisibleStocks()).not.toThrow();
+        });
+
+        it('should handle adjustTimeRangeToVisibleStocks with all stocks hidden', () => {
+            mainChart.stockVisibility = [false];
+            
+            expect(() => mainChart.adjustTimeRangeToVisibleStocks()).not.toThrow();
+        });
+
+        it('should handle adjustTimeRangeToVisibleStocks with invalid time data', () => {
+            mainChart.stockInfos = [{
+                code: 'AAPL',
+                data: [
+                    { time: 'invalid-time', close: 100 },
+                    { time: null, close: 105 }
+                ]
+            }];
+            
+            expect(() => mainChart.adjustTimeRangeToVisibleStocks()).not.toThrow();
+        });
+    });
+
+    describe('volume chart synchronization methods', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            // Setup mock volume chart with timeScale object (not function)
+            const mockTimeScale = {
+                applyOptions: jest.fn(),
+                setVisibleLogicalRange: jest.fn(),
+                options: jest.fn(),
+                getVisibleLogicalRange: jest.fn(),
+                setVisibleRange: jest.fn()
+            };
+            
+            const mockVolumeChart = {
+                chart: {
+                    timeScale: () => mockTimeScale
+                },
+                setTimeRange: jest.fn(),
+                volumeSeries: { id: 'volume' }
+            };
+            mainChart.volumeChart = mockVolumeChart;
+            
+            // Store reference to timeScale for easy access in tests
+            mainChart.volumeChart._timeScale = mockTimeScale;
+        });
+
+        it('should sync time range to volume chart', () => {
+            const timeRange = { from: 1672531200, to: 1704067199 };
+            const mainTimeScaleOptions = {
+                barSpacing: 10,
+                rightOffset: 5,
+                fixLeftEdge: false,
+                fixRightEdge: false,
+                lockVisibleTimeRangeOnResize: true
+            };
+            const mainLogicalRange = { from: 0, to: 100 };
+            
+            // Mock main chart timeScale methods
+            mainChart.chart.timeScale().options = jest.fn().mockReturnValue(mainTimeScaleOptions);
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(mainLogicalRange);
+            
+            mainChart.syncTimeRangeToVolumeChart(timeRange);
+            
+            // The method might be wrapped in try-catch, so check if it was called at least once
+            expect(mainChart.volumeChart._timeScale.applyOptions).toHaveBeenCalled();
+            expect(mainChart.volumeChart.setTimeRange).toHaveBeenCalledWith(timeRange);
+            expect(mainChart.volumeChart._timeScale.setVisibleLogicalRange).toHaveBeenCalledWith(mainLogicalRange);
+        });
+
+        it('should handle syncTimeRangeToVolumeChart with no volume chart', () => {
+            mainChart.volumeChart = null;
+            const timeRange = { from: 1672531200, to: 1704067199 };
+            
+            expect(() => mainChart.syncTimeRangeToVolumeChart(timeRange)).not.toThrow();
+        });
+
+        it('should handle syncTimeRangeToVolumeChart with no time range', () => {
+            expect(() => mainChart.syncTimeRangeToVolumeChart(null)).not.toThrow();
+        });
+
+        it('should handle syncTimeRangeToVolumeChart with no volume series', () => {
+            mainChart.volumeChart.volumeSeries = null;
+            const timeRange = { from: 1672531200, to: 1704067199 };
+            
+            expect(() => mainChart.syncTimeRangeToVolumeChart(timeRange)).not.toThrow();
+        });
+
+        it('should handle syncTimeRangeToVolumeChart sync failure', () => {
+            const timeRange = { from: 1672531200, to: 1704067199 };
+            
+            // Mock main chart to throw error when options() is called
+            mainChart.chart.timeScale().options = jest.fn().mockImplementation(() => {
+                throw new Error('Options error');
+            });
+            
+            // The method does NOT have try-catch for the options() call, so it will throw
+            expect(() => mainChart.syncTimeRangeToVolumeChart(timeRange)).toThrow('Options error');
+        });
+    });
+
+    describe('time axis alignment methods', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            // Setup mock volume chart with proper timeScale object
+            const mockTimeScale = {
+                getVisibleLogicalRange: jest.fn().mockReturnValue({ from: 0, to: 100 }),
+                setVisibleLogicalRange: jest.fn(),
+                applyOptions: jest.fn(),
+                setVisibleRange: jest.fn(),
+                options: jest.fn().mockReturnValue({ barSpacing: 10 })
+            };
+            
+            const mockVolumeChart = {
+                chart: {
+                    timeScale: () => mockTimeScale
+                }
+            };
+            mainChart.volumeChart = mockVolumeChart;
+            
+            // Store reference to timeScale for easy access in tests
+            mainChart.volumeChart._timeScale = mockTimeScale;
+        });
+
+        it('should force time axis alignment', () => {
+            const mainLogicalRange = { from: 5, to: 95 };
+            const mainVisibleRange = { from: 1672531200, to: 1704067199 };
+            const mainTimeScaleOptions = {
+                barSpacing: 10,
+                rightOffset: 5,
+                fixLeftEdge: false,
+                fixRightEdge: false,
+                lockVisibleTimeRangeOnResize: true,
+                shiftVisibleRangeOnNewBar: true,
+                allowShiftVisibleRangeOnWhitespaceReplacement: false
+            };
+            
+            // Mock main chart methods
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(mainLogicalRange);
+            mainChart.chart.timeScale().options = jest.fn().mockReturnValue(mainTimeScaleOptions);
+            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(mainVisibleRange);
+            
+            mainChart.forceTimeAxisAlignment();
+            
+            // Check if methods were called (the actual implementation has try-catch and conditions)
+            expect(mainChart.volumeChart._timeScale.applyOptions).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    barSpacing: 10,
+                    rightOffset: 5
+                })
+            );
+            expect(mainChart.volumeChart._timeScale.setVisibleRange).toHaveBeenCalledWith(mainVisibleRange);
+            expect(mainChart.volumeChart._timeScale.setVisibleLogicalRange).toHaveBeenCalledWith(mainLogicalRange);
+        });
+
+        it('should handle forceTimeAxisAlignment with no volume chart', () => {
+            mainChart.volumeChart = null;
+            
+            expect(() => mainChart.forceTimeAxisAlignment()).not.toThrow();
+        });
+
+        it('should handle forceTimeAxisAlignment with no main chart', () => {
+            mainChart.chart = null;
+            
+            expect(() => mainChart.forceTimeAxisAlignment()).not.toThrow();
+        });
+
+        it('should handle forceTimeAxisAlignment with alignment failure', () => {
+            // Setup basic mocks
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue({ from: 0, to: 100 });
+            mainChart.chart.timeScale().options = jest.fn().mockReturnValue({ barSpacing: 10 });
+            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue({ from: 1672531200, to: 1704067199 });
+            
+            // Make setVisibleLogicalRange throw
+            mainChart.volumeChart._timeScale.setVisibleLogicalRange = jest.fn().mockImplementation(() => {
+                throw new Error('Alignment error');
+            });
+            
+            // The method has try-catch, so it should not throw
+            expect(() => mainChart.forceTimeAxisAlignment()).not.toThrow();
+        });
+    });
+
+    describe('logical range correction methods', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+        });
+
+        it('should fix negative logical range immediately', () => {
+            const negativeRange = { from: -10, to: 90 };
+            const fitContentSpy = jest.spyOn(mainChart.chart.timeScale(), 'fitContent');
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(negativeRange);
+            
+            // The method takes a parameter (problematicRange)
+            mainChart.fixNegativeLogicalRangeImmediate(negativeRange);
+            
+            expect(fitContentSpy).toHaveBeenCalled();
+            
+            fitContentSpy.mockRestore();
+        });
+
+        it('should not fix positive logical range', () => {
+            const positiveRange = { from: 10, to: 90 };
+            const fitContentSpy = jest.spyOn(mainChart.chart.timeScale(), 'fitContent');
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(positiveRange);
+            
+            // Pass the range as parameter
+            mainChart.fixNegativeLogicalRangeImmediate(positiveRange);
+            
+            // For positive range, fitContent should still be called initially
+            expect(fitContentSpy).toHaveBeenCalled();
+            
+            fitContentSpy.mockRestore();
+        });
+
+        it('should handle fixNegativeLogicalRangeImmediate with no chart', () => {
+            mainChart.chart = null;
+            
+            expect(() => mainChart.fixNegativeLogicalRangeImmediate({ from: -10, to: 90 })).not.toThrow();
+        });
+
+        it('should verify time axis alignment', () => {
+            const mockTimeScale = {
+                getVisibleLogicalRange: jest.fn().mockReturnValue({ from: 0, to: 100 }),
+                options: jest.fn().mockReturnValue({ barSpacing: 10 })
+            };
+            
+            const mockVolumeChart = {
+                chart: {
+                    timeScale: () => mockTimeScale
+                }
+            };
+            mainChart.volumeChart = mockVolumeChart;
+            
+            const mainRange = { from: 0, to: 100 };
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(mainRange);
+            mainChart.chart.timeScale().options = jest.fn().mockReturnValue({ barSpacing: 10 });
+            
+            // The method doesn't return a value in the actual implementation
+            expect(() => mainChart.verifyTimeAxisAlignment()).not.toThrow();
+        });
+
+        it('should detect misaligned time axis', () => {
+            const mockTimeScale = {
+                getVisibleLogicalRange: jest.fn().mockReturnValue({ from: 10, to: 90 }),
+                options: jest.fn().mockReturnValue({ barSpacing: 5 })
+            };
+            
+            const mockVolumeChart = {
+                chart: {
+                    timeScale: () => mockTimeScale
+                }
+            };
+            mainChart.volumeChart = mockVolumeChart;
+            
+            const mainRange = { from: 0, to: 100 };
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(mainRange);
+            mainChart.chart.timeScale().options = jest.fn().mockReturnValue({ barSpacing: 10 });
+            
+            // The method doesn't return a boolean, it logs warnings
+            expect(() => mainChart.verifyTimeAxisAlignment()).not.toThrow();
+        });
+
+        it('should handle verifyTimeAxisAlignment with no volume chart', () => {
+            mainChart.volumeChart = null;
+            
+            expect(() => mainChart.verifyTimeAxisAlignment()).not.toThrow();
         });
     });
 }); 

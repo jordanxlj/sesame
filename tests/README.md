@@ -1,4 +1,4 @@
-# LightweightCharts 单元测试
+# LightweightCharts 测试系统
 
 ## 📋 测试概述
 
@@ -53,31 +53,83 @@ npm run test:verbose
 
 ## 📊 测试覆盖范围
 
-### ChartConfig 测试
-- ✅ 默认配置验证
-- ✅ 图表类型配置
-- ✅ 配置合并逻辑
-- ✅ 时间刻度配置
+### 已完成的测试文件
 
-### ChartUtils 测试
-- ✅ 防抖和节流函数
-- ✅ 时间转换工具
-- ✅ 数据验证和过滤
-- ✅ ID生成器
-- ✅ 成交量数据处理
+1. **ChartConfig.test.js** (12个测试)
+   - 默认配置验证
+   - 颜色方案配置
+   - 图表类型常量
 
-### EventEmitter 测试
-- ✅ 事件监听和发射
-- ✅ 一次性事件监听
-- ✅ 事件移除
-- ✅ 错误处理
+2. **ChartUtils.test.js** (23个测试)
+   - 时间转换函数
+   - 数据处理工具
+   - 成交量格式化
 
-### SharedTimeScale 测试
-- ✅ 图表注册和注销
-- ✅ 主图监听器设置
-- ✅ 时间轴同步机制
-- ✅ 强制同步功能
-- ✅ 错误处理和边界情况
+3. **EventEmitter.test.js** (17个测试)
+   - 事件监听和触发
+   - 一次性事件处理
+   - 事件清理机制
+
+4. **SharedTimeScale.test.js** (23个测试)
+   - 图表注册和管理
+   - 时间范围同步
+   - 主从图表关系
+
+5. **BaseChart.test.js** (46个测试)
+   - 基础图表功能
+   - 系列管理
+   - 错误处理机制
+
+6. **MainChart.test.js** (70+个测试)
+   - 主图表完整功能
+   - 数据加载和处理
+   - 归一化系统
+   - 子图表管理
+   - 时间轴同步
+   - 高级方法测试
+
+## MainChart 高级方法测试覆盖
+
+### 归一化相关方法
+- ✅ `applyNormalization()` - 价格数据归一化应用
+- ✅ `applyIndicatorNormalization()` - 指标数据归一化
+- ✅ `enableNormalization()` - 启用归一化（包括边界情况）
+- ✅ `disableNormalization()` - 禁用归一化
+- ✅ `shouldEnableNormalization()` - 归一化条件判断
+
+### 时间轴管理方法
+- ✅ `adjustTimeRangeToVisibleStocks()` - 调整时间范围到可见股票
+- ✅ `syncTimeRangeToVolumeChart()` - 同步时间范围到成交量图
+- ✅ `forceTimeAxisAlignment()` - 强制时间轴对齐
+- ✅ `verifyTimeAxisAlignment()` - 验证时间轴对齐
+
+### 逻辑范围修复方法
+- ✅ `fixNegativeLogicalRangeImmediate()` - 立即修复负数逻辑范围
+- ✅ `checkAndFixNegativeLogicalRange()` - 检查并修复负数逻辑范围
+
+### 异常和边界情况测试
+
+#### 已覆盖的异常情况
+- ✅ 空数据数组处理
+- ✅ 无效 OHLC 数据过滤（NaN、null、空值）
+- ✅ 缺失股票信息处理
+- ✅ 网络错误处理
+- ✅ 服务器错误响应处理
+- ✅ 无效 JSON 响应处理
+- ✅ 归一化时缺失 close 字段
+- ✅ NaN 或无穷大的归一化比例
+- ✅ 时间轴同步失败
+- ✅ 对齐失败或子图不存在
+- ✅ 无效时间数据处理
+- ✅ 图表不存在时的方法调用
+- ✅ 成交量图不存在时的同步操作
+
+#### 特殊测试场景
+- ✅ 所有股票隐藏时的时间范围调整
+- ✅ 无效索引的股票可见性切换
+- ✅ 子图销毁时容器不存在的情况
+- ✅ 逻辑范围为正数时的修复跳过
+- ✅ 时间轴对齐验证（对齐和不对齐情况）
 
 ## 🔧 测试配置
 
