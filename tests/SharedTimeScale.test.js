@@ -1,5 +1,5 @@
 // SharedTimeScale 单元测试
-const { describe, it, expect, jest, beforeEach } = require('@jest/globals');
+const { describe, it, expect, beforeEach } = require('@jest/globals');
 const { SharedTimeScale } = require('../static/lightweight-charts.js');
 
 describe('SharedTimeScale', () => {

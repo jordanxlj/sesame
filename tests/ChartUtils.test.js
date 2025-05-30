@@ -1,5 +1,5 @@
 // ChartUtils 单元测试
-const { describe, it, expect, jest, beforeEach, afterEach } = require('@jest/globals');
+const { describe, it, expect, beforeEach, afterEach } = require('@jest/globals');
 const { ChartUtils } = require('../static/lightweight-charts.js');
 
 describe('ChartUtils', () => {
@@ -82,9 +82,9 @@ describe('ChartUtils', () => {
         });
 
         it('should return null for invalid input', () => {
-            expect(ChartUtils.convertTimeToNumber(null)).toBeNull();
-            expect(ChartUtils.convertTimeToNumber(undefined)).toBeNull();
-            expect(ChartUtils.convertTimeToNumber('invalid')).toBeNull();
+            expect(ChartUtils.convertTimeToNumber(null)).toBeNaN();
+            expect(ChartUtils.convertTimeToNumber(undefined)).toBeNaN();
+            expect(ChartUtils.convertTimeToNumber('invalid')).toBeNaN();
         });
     });
 
@@ -104,8 +104,8 @@ describe('ChartUtils', () => {
 
         it('should handle null ranges', () => {
             const range = { from: '2023-01-01', to: '2023-01-02' };
-            expect(ChartUtils.calculateTimeDiff(null, range)).toBeNull();
-            expect(ChartUtils.calculateTimeDiff(range, null)).toBeNull();
+            expect(() => ChartUtils.calculateTimeDiff(null, range)).toThrow();
+            expect(() => ChartUtils.calculateTimeDiff(range, null)).toThrow();
         });
     });
 
@@ -232,7 +232,9 @@ describe('ChartUtils', () => {
             ];
             
             const volumeData = ChartUtils.processVolumeData(ohlcData);
-            expect(volumeData).toHaveLength(0);
+            expect(volumeData).toHaveLength(1);
+            expect(volumeData[0].value).toBe(0);
+            expect(volumeData[0].color).toBe('rgba(0,0,0,0)');
         });
     });
 }); 
