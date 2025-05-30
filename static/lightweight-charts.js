@@ -1118,7 +1118,7 @@ class MainChart extends BaseChart {
         
         // 共享时间刻度集成
         this.sharedTimeScale = globalTimeScale;
-        this.chartId = this.generateId('main');
+        this.chartId = ChartUtils.generateId('main');
         
         // 注册到全局时间刻度管理器（主图）
         this.sharedTimeScale.registerChart(this.chartId, this, true);
@@ -3965,7 +3965,7 @@ class VolumeChart extends BaseChart {
         
         // 共享时间刻度集成
         this.sharedTimeScale = globalTimeScale;
-        this.chartId = this.generateId('volume');
+        this.chartId = ChartUtils.generateId('volume');
         
         // 注册到全局时间刻度管理器（子图）
         this.sharedTimeScale.registerChart(this.chartId, this, false);
@@ -4219,7 +4219,7 @@ class SqueezeChart extends BaseChart {
         
         // 共享时间刻度集成
         this.sharedTimeScale = globalTimeScale;
-        this.chartId = this.generateId('squeeze');
+        this.chartId = ChartUtils.generateId('squeeze');
         
         // 注册到全局时间刻度管理器（子图）
         this.sharedTimeScale.registerChart(this.chartId, this, false);
