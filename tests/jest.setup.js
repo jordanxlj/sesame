@@ -92,6 +92,10 @@ global.LightweightCharts = {
     version: '4.0.0'
 };
 
+// Expose createMockChart globally for tests
+global.createMockChart = createMockChart;
+global.createMockTimeScale = createMockTimeScale;
+
 // 确保在 window 对象上也可用
 global.window = global.window || {};
 global.window.LightweightCharts = global.LightweightCharts;
@@ -187,8 +191,15 @@ global.fetch = jest.fn().mockResolvedValue({
 beforeEach(() => {
     jest.clearAllMocks();
     
-    // Restore the default LightweightCharts mock to ensure fresh chart instances
-    global.LightweightCharts.createChart.mockImplementation(() => createMockChart());
+    // Always restore the default LightweightCharts mock to ensure fresh chart instances
+    // This handles cases where tests might have set global.LightweightCharts to undefined
+    global.LightweightCharts = {
+        createChart: jest.fn().mockImplementation(() => createMockChart()),
+        version: '4.0.0'
+    };
+    
+    // Also restore it on window object
+    global.window.LightweightCharts = global.LightweightCharts;
 });
 
 // Global test utilities

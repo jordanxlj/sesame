@@ -1683,4 +1683,147 @@ describe('MainChart', () => {
             await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
         });
     });
+
+    describe('chart creation and LightweightCharts dependency', () => {
+        beforeEach(() => {
+            // Reset global LightweightCharts for each test
+            global.LightweightCharts = {
+                createChart: jest.fn().mockReturnValue(global.createMockChart()),
+                version: '4.0.0'
+            };
+            global.window.LightweightCharts = global.LightweightCharts;
+        });
+
+        it('should create chart successfully when LightweightCharts is available', () => {
+            mainChart = new MainChart(mockContainer);
+            
+            expect(() => mainChart.create()).not.toThrow();
+            expect(global.LightweightCharts.createChart).toHaveBeenCalled();
+            expect(mainChart.chart).toBeDefined();
+        });
+
+        it('should handle error when LightweightCharts is not available', () => {
+            // Remove LightweightCharts from global scope
+            global.LightweightCharts = undefined;
+            global.window.LightweightCharts = undefined;
+            
+            mainChart = new MainChart(mockContainer);
+            
+            expect(() => mainChart.create()).toThrow();
+            expect(mainChart.getState().hasError).toBe(true);
+            expect(mainChart.getState().errorMessage).toContain('LightweightCharts库未加载');
+        });
+
+        it('should handle error when LightweightCharts.createChart is not a function', () => {
+            // Set LightweightCharts but make createChart not a function
+            global.LightweightCharts = {
+                createChart: null, // Not a function
+                version: '4.0.0'
+            };
+            global.window.LightweightCharts = global.LightweightCharts;
+            
+            mainChart = new MainChart(mockContainer);
+            
+            expect(() => mainChart.create()).toThrow();
+            expect(mainChart.getState().hasError).toBe(true);
+            expect(mainChart.getState().errorMessage).toMatch(/createChart.*不是.*函数/);
+        });
+
+        it('should handle error when LightweightCharts.createChart throws an error', () => {
+            // Make createChart throw an error
+            global.LightweightCharts.createChart = jest.fn().mockImplementation(() => {
+                throw new Error('Chart creation failed');
+            });
+            global.window.LightweightCharts = global.LightweightCharts;
+            
+            mainChart = new MainChart(mockContainer);
+            
+            expect(() => mainChart.create()).toThrow('Chart creation failed');
+            expect(mainChart.getState().hasError).toBe(true);
+            expect(mainChart.getState().errorMessage).toBe('Chart creation failed');
+        });
+
+        it('should handle error when container is invalid', () => {
+            mainChart = new MainChart(null); // Invalid container
+            
+            expect(() => mainChart.create()).toThrow();
+            expect(mainChart.getState().hasError).toBe(true);
+        });
+
+        it('should verify LightweightCharts version compatibility', () => {
+            global.LightweightCharts = {
+                createChart: jest.fn().mockReturnValue(global.createMockChart()),
+                version: '3.8.0' // Older version
+            };
+            global.window.LightweightCharts = global.LightweightCharts;
+            
+            mainChart = new MainChart(mockContainer);
+            
+            // Should still work but may log warnings
+            expect(() => mainChart.create()).not.toThrow();
+            expect(global.LightweightCharts.createChart).toHaveBeenCalled();
+        });
+
+        it('should handle missing version information gracefully', () => {
+            global.LightweightCharts = {
+                createChart: jest.fn().mockReturnValue(global.createMockChart())
+                // Missing version property
+            };
+            global.window.LightweightCharts = global.LightweightCharts;
+            
+            mainChart = new MainChart(mockContainer);
+            
+            expect(() => mainChart.create()).not.toThrow();
+            expect(global.LightweightCharts.createChart).toHaveBeenCalled();
+        });
+
+        it('should validate chart configuration before creation', () => {
+            const createChartSpy = jest.spyOn(global.LightweightCharts, 'createChart');
+            
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            // Verify that createChart was called with proper configuration
+            expect(createChartSpy).toHaveBeenCalledWith(
+                mockContainer,
+                expect.objectContaining({
+                    width: expect.any(Number),
+                    height: expect.any(Number),
+                    timeScale: expect.objectContaining({
+                        timeVisible: true,
+                        secondsVisible: false,
+                        barSpacing: expect.any(Number),
+                        rightOffset: expect.any(Number)
+                    })
+                })
+            );
+        });
+
+        it('should emit error event when chart creation fails', () => {
+            global.LightweightCharts.createChart = jest.fn().mockImplementation(() => {
+                throw new Error('Creation failed');
+            });
+            
+            mainChart = new MainChart(mockContainer);
+            const errorSpy = jest.spyOn(mainChart, 'emit');
+            
+            expect(() => mainChart.create()).toThrow();
+            expect(errorSpy).toHaveBeenCalledWith('error', expect.any(Error));
+        });
+
+        it('should handle chart creation with minimal configuration', () => {
+            const minimalContainer = {
+                style: {},
+                getBoundingClientRect: jest.fn().mockReturnValue({
+                    width: 100,
+                    height: 50
+                })
+            };
+            
+            mainChart = new MainChart(minimalContainer);
+            
+            expect(() => mainChart.create()).not.toThrow();
+            expect(global.LightweightCharts.createChart).toHaveBeenCalled();
+        });
+    });
 }); 

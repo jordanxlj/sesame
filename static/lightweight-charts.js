@@ -543,14 +543,18 @@ class BaseChart extends EventEmitter {
         }
         
         try {
-            // 检查LightweightCharts是否可用
-            if (!window.LightweightCharts) {
-                throw new Error('LightweightCharts库未加载');
-            }
-            
             // 检查容器是否有效
             if (!this.container) {
                 throw new Error('图表容器无效');
+            }
+            
+            // 检查LightweightCharts是否可用
+            if (typeof LightweightCharts === 'undefined') {
+                throw new Error('LightweightCharts库未加载，请确保在页面中正确引入LightweightCharts库');
+            }
+            
+            if (typeof LightweightCharts.createChart !== 'function') {
+                throw new Error('LightweightCharts.createChart不是一个函数，可能是版本不兼容或库文件损坏');
             }
             
             // 获取完整配置
@@ -4724,8 +4728,8 @@ if (typeof module !== 'undefined' && module.exports) {
         globalTimeScale
     };
 } else if (typeof window !== 'undefined') {
-    // Browser global export
-    window.LightweightCharts = {
+    // Browser global export - use our own namespace to avoid conflicts
+    window.CustomCharts = {
         ChartConfig,
         ChartUtils,
         EventEmitter,
@@ -4737,4 +4741,16 @@ if (typeof module !== 'undefined' && module.exports) {
         ChartRegistry,
         globalTimeScale
     };
+    
+    // Make individual classes available globally for backward compatibility
+    window.ChartConfig = ChartConfig;
+    window.ChartUtils = ChartUtils;
+    window.EventEmitter = EventEmitter;
+    window.SharedTimeScale = SharedTimeScale;
+    window.BaseChart = BaseChart;
+    window.MainChart = MainChart;
+    window.VolumeChart = VolumeChart;
+    window.SqueezeChart = SqueezeChart;
+    window.ChartRegistry = ChartRegistry;
+    window.globalTimeScale = globalTimeScale;
 }
