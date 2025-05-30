@@ -1124,8 +1124,10 @@ class MainChart extends BaseChart {
         this.sharedTimeScale.registerChart(this.chartId, this, true);
         
         this.stockInfos = []; // 存储股票信息的数组
+        this.stockVisibility = []; // 股票可见性状态数组
+        this.originalStockData = []; // 存储原始股票数据
+        this.normalizationRatios = []; // 存储归一化比例
         this.seriesMap = new Map(); // series实例映射
-        this.stockColors = ['#2E8B57', '#FF6347', '#4169E1', '#DA70D6', '#FF8C00']; // 预定义颜色
         this.volumeChart = null; // 成交量子图实例
         this.squeezeChart = null; // Squeeze子图实例
         this.normalizationEnabled = false; // 归一化状态
@@ -1374,7 +1376,22 @@ class MainChart extends BaseChart {
      * 动态调整时间轴到所有可见股票的范围
      */
     adjustTimeRangeToVisibleStocks() {
-        if (!this.chart) return;
+        if (!this.chart || !this.stockInfos || this.stockInfos.length === 0) {
+            console.warn('⚠️ [ADJUST-TIME] 没有股票数据，跳过时间范围调整');
+            return;
+        }
+        
+        console.log(`🔍 [ADJUST-TIME] 调整前 logical range:`, this.chart.timeScale().getVisibleLogicalRange());
+        
+        // 🔍 DEBUG: 添加详细调试信息
+        console.log(`🔍 [ADJUST-TIME] 调试信息:`, {
+            stockInfosExists: !!this.stockInfos,
+            stockInfosLength: this.stockInfos ? this.stockInfos.length : 'undefined',
+            stockInfosContent: this.stockInfos,
+            stockVisibilityExists: !!this.stockVisibility,
+            stockVisibilityLength: this.stockVisibility ? this.stockVisibility.length : 'undefined',
+            stockVisibilityContent: this.stockVisibility
+        });
         
         try {
             // 🔍 DEBUG: 记录调整前的逻辑范围
@@ -1813,8 +1830,13 @@ class MainChart extends BaseChart {
      * 渲染股票列表和价格信息在同一行 - 增强版本
      */
     renderStockListWithPrices(ohlcData, timeStr) {
-        if (this.stockInfos.length === 0) {
+        if (!this.stockInfos || this.stockInfos.length === 0) {
             return '<div style="color: #666; font-size: 11px;">暂无股票</div>';
+        }
+        
+        // 确保stockVisibility数组已初始化
+        if (!this.stockVisibility || this.stockVisibility.length !== this.stockInfos.length) {
+            this.stockVisibility = new Array(this.stockInfos.length).fill(true);
         }
         
         let html = '<div>';
@@ -2084,6 +2106,27 @@ class MainChart extends BaseChart {
      * 存储股票信息
      */
     storeStockInfo(code, index, ohlc) {
+        // 🔍 DEBUG: 检查数组初始化状态
+        console.log(`🔍 [STORE-STOCK] 数组状态检查:`, {
+            stockInfosExists: !!this.stockInfos,
+            stockInfosType: typeof this.stockInfos,
+            stockVisibilityExists: !!this.stockVisibility,
+            originalStockDataExists: !!this.originalStockData,
+            index: index,
+            code: code
+        });
+        
+        // 确保数组有足够的长度
+        while (this.stockInfos.length <= index) {
+            this.stockInfos.push(null);
+        }
+        while (this.stockVisibility.length <= index) {
+            this.stockVisibility.push(true);
+        }
+        while (this.originalStockData.length <= index) {
+            this.originalStockData.push(null);
+        }
+        
         // 获取颜色方案
         const colorSchemes = [
             { upColor: '#26a69a', downColor: '#ef5350', borderUpColor: '#26a69a', borderDownColor: '#ef5350', wickUpColor: '#26a69a', wickDownColor: '#ef5350' },
