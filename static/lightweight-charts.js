@@ -1290,10 +1290,10 @@ class MainChart extends BaseChart {
         // 同步时间轴到Squeeze子图
         this.syncTimeRangeToSqueezeChart(timeRange);
         
-        // 强制所有图表时间轴对齐（延迟执行以确保同步完成）
-        setTimeout(() => {
-            this.forceTimeAxisAlignment();
-        }, 100);
+        // 强制对齐所有子图的时间轴
+        if (this.volumeChart || this.squeezeChart) {
+            this.sharedTimeScale.forceSync();
+        }
     }
     
     /**
@@ -2713,31 +2713,15 @@ class MainChart extends BaseChart {
         // 加载成交量数据到子图
         if (this.volumeChart) {
             setTimeout(async () => {
-                // 🔍 DEBUG: 记录成交量加载前的主图状态
-                const beforeVolumeLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
-                console.log(`🔍 [FINALIZE] 加载成交量前主图 logical range:`, beforeVolumeLogicalRange);
-                
-                // 获取主股票（第一只股票）的代码
                 const mainStockCode = this.stockInfos[0]?.code;
                 if (mainStockCode) {
                     await this.loadVolumeDataToSubChart(mainStockCode);
                     
-                    // 🔍 DEBUG: 记录成交量加载后的主图状态
+                    // 使用SharedTimeScale统一同步
                     setTimeout(() => {
-                        const afterVolumeLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
-                        console.log(`🔍 [FINALIZE] 成交量加载后主图 logical range:`, afterVolumeLogicalRange);
-                        
-                        if (beforeVolumeLogicalRange && afterVolumeLogicalRange) {
-                            const fromDiff = Math.abs((beforeVolumeLogicalRange.from || 0) - (afterVolumeLogicalRange.from || 0));
-                            if (fromDiff > 0.01) {
-                                console.warn(`⚠️ [FINALIZE] 成交量加载导致主图逻辑范围变化:`, {
-                                    before: beforeVolumeLogicalRange,
-                                    after: afterVolumeLogicalRange,
-                                    fromDiff
-                                });
-                            }
-                        }
-                    }, 50);
+                        this.sharedTimeScale.forceSync();
+                        console.log('✅ [SHARED-TIME] 数据加载完成后强制同步');
+                    }, 100);
                 }
             }, 100);
         }
@@ -4723,3 +4707,32 @@ class SharedTimeScale extends EventEmitter {
 
 // 全局共享时间刻度管理器实例
 const globalTimeScale = new SharedTimeScale();
+
+// Export for both CommonJS and ES modules
+if (typeof module !== 'undefined' && module.exports) {
+    // CommonJS export (for Jest testing)
+    module.exports = {
+        ChartConfig,
+        ChartUtils,
+        EventEmitter,
+        SharedTimeScale,
+        BaseChart,
+        MainChart,
+        VolumeChart,
+        SqueezeChart,
+        globalTimeScale
+    };
+} else if (typeof window !== 'undefined') {
+    // Browser global export
+    window.LightweightCharts = {
+        ChartConfig,
+        ChartUtils,
+        EventEmitter,
+        SharedTimeScale,
+        BaseChart,
+        MainChart,
+        VolumeChart,
+        SqueezeChart,
+        globalTimeScale
+    };
+}
