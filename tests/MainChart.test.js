@@ -58,6 +58,14 @@ describe('MainChart', () => {
     afterEach(() => {
         if (mainChart) {
             try {
+                // Clear any pending async operations
+                if (mainChart._isFixingLogicalRange) {
+                    mainChart._isFixingLogicalRange = false;
+                }
+                
+                // Clear any pending timeouts from the chart operations
+                jest.clearAllTimers();
+                
                 mainChart.destroy();
             } catch (e) {
                 // Ignore cleanup errors
@@ -66,6 +74,10 @@ describe('MainChart', () => {
         }
         ChartRegistry.clear();
         jest.clearAllMocks();
+        
+        // Reset global mocks
+        global.requestAnimationFrame = jest.fn();
+        global.ChartUtils = undefined;
     });
 
     describe('constructor', () => {
@@ -836,16 +848,33 @@ describe('MainChart', () => {
         });
 
         it('should adjust time range to visible stocks', () => {
-            const setVisibleRangeSpy = jest.spyOn(mainChart.chart.timeScale(), 'setVisibleRange');
+            // Mock ChartUtils.convertTimeToNumber since it's used in the implementation
+            global.ChartUtils = {
+                convertTimeToNumber: jest.fn().mockImplementation((time) => {
+                    if (time === '2023-01-01') return 1672531200;
+                    if (time === '2023-01-02') return 1672617600;
+                    return NaN;
+                })
+            };
+            
+            // Create a controlled mock for the main chart's timeScale
+            const mockMainTimeScale = {
+                setVisibleRange: jest.fn(),
+                getVisibleLogicalRange: jest.fn().mockReturnValue({ from: 0, to: 100 }),
+                options: jest.fn().mockReturnValue({ barSpacing: 10 }),
+                applyOptions: jest.fn(),
+                fitContent: jest.fn()
+            };
+            
+            // Replace the chart's timeScale
+            mainChart.chart.timeScale = jest.fn().mockReturnValue(mockMainTimeScale);
             
             mainChart.adjustTimeRangeToVisibleStocks();
             
-            expect(setVisibleRangeSpy).toHaveBeenCalledWith(expect.objectContaining({
+            expect(mockMainTimeScale.setVisibleRange).toHaveBeenCalledWith(expect.objectContaining({
                 from: expect.any(Number),
                 to: expect.any(Number)
             }));
-            
-            setVisibleRangeSpy.mockRestore();
         });
 
         it('should handle adjustTimeRangeToVisibleStocks with no chart', () => {
@@ -950,13 +979,19 @@ describe('MainChart', () => {
         it('should handle syncTimeRangeToVolumeChart sync failure', () => {
             const timeRange = { from: 1672531200, to: 1704067199 };
             
+            // Store original mock for restoration
+            const originalOptions = mainChart.chart.timeScale().options;
+            
             // Mock main chart to throw error when options() is called
             mainChart.chart.timeScale().options = jest.fn().mockImplementation(() => {
                 throw new Error('Options error');
             });
             
-            // The method does NOT have try-catch for the options() call, so it will throw
-            expect(() => mainChart.syncTimeRangeToVolumeChart(timeRange)).toThrow('Options error');
+            // The actual implementation has comprehensive try-catch handling, so it should not throw
+            expect(() => mainChart.syncTimeRangeToVolumeChart(timeRange)).not.toThrow();
+            
+            // Restore original mock to prevent affecting other tests
+            mainChart.chart.timeScale().options = originalOptions;
         });
     });
 
@@ -998,10 +1033,18 @@ describe('MainChart', () => {
                 allowShiftVisibleRangeOnWhitespaceReplacement: false
             };
             
-            // Mock main chart methods
-            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(mainLogicalRange);
-            mainChart.chart.timeScale().options = jest.fn().mockReturnValue(mainTimeScaleOptions);
-            mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(mainVisibleRange);
+            // Create a fresh mock timeScale for the main chart to avoid interference
+            const mockMainTimeScale = {
+                getVisibleLogicalRange: jest.fn().mockReturnValue(mainLogicalRange),
+                options: jest.fn().mockReturnValue(mainTimeScaleOptions),
+                getVisibleRange: jest.fn().mockReturnValue(mainVisibleRange),
+                setVisibleRange: jest.fn(),
+                applyOptions: jest.fn(),
+                fitContent: jest.fn()
+            };
+            
+            // Replace the main chart's timeScale with our controlled mock
+            mainChart.chart.timeScale = jest.fn().mockReturnValue(mockMainTimeScale);
             
             mainChart.forceTimeAxisAlignment();
             
@@ -1048,33 +1091,56 @@ describe('MainChart', () => {
         beforeEach(() => {
             mainChart = new MainChart(mockContainer);
             mainChart.create();
+            
+            // Ensure the fixing flag is reset
+            mainChart._isFixingLogicalRange = false;
         });
 
         it('should fix negative logical range immediately', () => {
             const negativeRange = { from: -10, to: 90 };
-            const fitContentSpy = jest.spyOn(mainChart.chart.timeScale(), 'fitContent');
-            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(negativeRange);
+            
+            // Create a controlled mock for the main chart's timeScale
+            const mockMainTimeScale = {
+                fitContent: jest.fn(),
+                getVisibleLogicalRange: jest.fn()
+                    .mockReturnValueOnce(negativeRange) // First call returns the negative range
+                    .mockReturnValue({ from: 0, to: 90 }), // Subsequent calls return fixed range
+                setVisibleLogicalRange: jest.fn(),
+                options: jest.fn().mockReturnValue({ barSpacing: 10 }),
+                setVisibleRange: jest.fn(),
+                applyOptions: jest.fn()
+            };
+            
+            // Replace the chart's timeScale
+            mainChart.chart.timeScale = jest.fn().mockReturnValue(mockMainTimeScale);
             
             // The method takes a parameter (problematicRange)
             mainChart.fixNegativeLogicalRangeImmediate(negativeRange);
             
-            expect(fitContentSpy).toHaveBeenCalled();
-            
-            fitContentSpy.mockRestore();
+            expect(mockMainTimeScale.fitContent).toHaveBeenCalled();
         });
 
         it('should not fix positive logical range', () => {
             const positiveRange = { from: 10, to: 90 };
-            const fitContentSpy = jest.spyOn(mainChart.chart.timeScale(), 'fitContent');
-            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue(positiveRange);
             
-            // Pass the range as parameter
+            // Create a controlled mock for the main chart's timeScale  
+            const mockMainTimeScale = {
+                fitContent: jest.fn(),
+                getVisibleLogicalRange: jest.fn().mockReturnValue(positiveRange),
+                setVisibleLogicalRange: jest.fn(),
+                options: jest.fn().mockReturnValue({ barSpacing: 10 }),
+                setVisibleRange: jest.fn(),
+                applyOptions: jest.fn()
+            };
+            
+            // Replace the chart's timeScale
+            mainChart.chart.timeScale = jest.fn().mockReturnValue(mockMainTimeScale);
+            
+            // Pass the range as parameter - method still calls fitContent first
             mainChart.fixNegativeLogicalRangeImmediate(positiveRange);
             
             // For positive range, fitContent should still be called initially
-            expect(fitContentSpy).toHaveBeenCalled();
-            
-            fitContentSpy.mockRestore();
+            expect(mockMainTimeScale.fitContent).toHaveBeenCalled();
         });
 
         it('should handle fixNegativeLogicalRangeImmediate with no chart', () => {
@@ -1129,6 +1195,492 @@ describe('MainChart', () => {
             mainChart.volumeChart = null;
             
             expect(() => mainChart.verifyTimeAxisAlignment()).not.toThrow();
+        });
+    });
+
+    describe('information bar and display methods', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            // Setup test data
+            mainChart.stockInfos = [{
+                code: 'AAPL',
+                name: 'Apple Inc.',
+                data: [{ time: '2023-01-01', open: 100, high: 105, low: 95, close: 102, volume: 1000 }],
+                colorScheme: { upColor: '#26a69a', downColor: '#ef5350' },
+                isMain: true
+            }];
+            mainChart.stockVisibility = [true];
+            
+            // Mock createInfoBar method
+            mainChart.createInfoBar = jest.fn().mockReturnValue({
+                innerHTML: ''
+            });
+            
+            // Mock utility methods
+            mainChart.updateInfoBarWithLatestData = jest.fn();
+            mainChart.findStockDataAtTime = jest.fn();
+            mainChart.renderMultiStockInfoBar = jest.fn();
+            mainChart.renderStockListWithControls = jest.fn().mockReturnValue('<div>Stock List</div>');
+        });
+
+        it('should update info bar with valid parameters', () => {
+            const param = {
+                time: 1672531200,
+                seriesData: []
+            };
+            
+            // Mock findStockDataAtTime to return data
+            mainChart.findStockDataAtTime.mockReturnValue({
+                time: '2023-01-01',
+                open: 100,
+                high: 105,
+                low: 95,
+                close: 102,
+                volume: 1000
+            });
+            
+            mainChart.updateInfoBar(param);
+            
+            expect(mainChart.createInfoBar).toHaveBeenCalled();
+            expect(mainChart.findStockDataAtTime).toHaveBeenCalled();
+            expect(mainChart.renderMultiStockInfoBar).toHaveBeenCalled();
+        });
+
+        it('should handle updateInfoBar with invalid time parameter', () => {
+            const param = {
+                time: 'invalid-time',
+                seriesData: []
+            };
+            
+            mainChart.updateInfoBar(param);
+            
+            expect(mainChart.updateInfoBarWithLatestData).toHaveBeenCalled();
+        });
+
+        it('should handle updateInfoBar with no parameters', () => {
+            mainChart.updateInfoBar(null);
+            
+            expect(mainChart.updateInfoBarWithLatestData).toHaveBeenCalled();
+        });
+
+        it('should handle updateInfoBar with missing time', () => {
+            const param = { seriesData: [] };
+            
+            mainChart.updateInfoBar(param);
+            
+            expect(mainChart.updateInfoBarWithLatestData).toHaveBeenCalled();
+        });
+
+        it('should handle updateInfoBar when no stock data found', () => {
+            const param = {
+                time: 1672531200,
+                seriesData: []
+            };
+            
+            // Mock findStockDataAtTime to return null (no data found)
+            mainChart.findStockDataAtTime.mockReturnValue(null);
+            
+            const mockInfoBar = { innerHTML: '' };
+            mainChart.createInfoBar.mockReturnValue(mockInfoBar);
+            
+            mainChart.updateInfoBar(param);
+            
+            expect(mainChart.createInfoBar).toHaveBeenCalled();
+            expect(mainChart.renderStockListWithControls).toHaveBeenCalled();
+            expect(mockInfoBar.innerHTML).toContain('Stock List');
+        });
+
+        it('should handle updateInfoBar with createInfoBar failure', () => {
+            const param = {
+                time: 1672531200,
+                seriesData: []
+            };
+            
+            // Make createInfoBar throw an error
+            mainChart.createInfoBar.mockImplementation(() => {
+                throw new Error('InfoBar creation failed');
+            });
+            
+            expect(() => mainChart.updateInfoBar(param)).toThrow('InfoBar creation failed');
+        });
+    });
+
+    describe('bar spacing synchronization methods', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            // Setup mock volume and squeeze charts
+            const mockTimeScale = {
+                applyOptions: jest.fn(),
+                options: jest.fn().mockReturnValue({ barSpacing: 10 })
+            };
+            
+            mainChart.volumeChart = {
+                chart: {
+                    timeScale: () => mockTimeScale
+                }
+            };
+            
+            mainChart.squeezeChart = {
+                chart: {
+                    timeScale: () => mockTimeScale
+                }
+            };
+            
+            // Store references for testing
+            mainChart.volumeChart._timeScale = mockTimeScale;
+            mainChart.squeezeChart._timeScale = mockTimeScale;
+        });
+
+        it('should sync bar spacing to sub charts', () => {
+            // Clear any previous calls
+            mainChart.volumeChart._timeScale.applyOptions.mockClear();
+            mainChart.squeezeChart._timeScale.applyOptions.mockClear();
+            
+            // Create a completely new mock for the main chart's timeScale that returns 15
+            const mockMainTimeScale = {
+                options: jest.fn().mockReturnValue({ barSpacing: 15 }),
+                getVisibleLogicalRange: jest.fn().mockReturnValue({ from: 0, to: 100 }),
+                setVisibleLogicalRange: jest.fn(),
+                setVisibleRange: jest.fn(),
+                applyOptions: jest.fn(),
+                fitContent: jest.fn()
+            };
+            
+            // Replace the main chart's timeScale method completely
+            mainChart.chart.timeScale = jest.fn().mockReturnValue(mockMainTimeScale);
+            
+            mainChart.syncBarSpacingToSubCharts();
+            
+            expect(mainChart.volumeChart._timeScale.applyOptions).toHaveBeenCalledWith({ barSpacing: 15 });
+            expect(mainChart.squeezeChart._timeScale.applyOptions).toHaveBeenCalledWith({ barSpacing: 15 });
+        });
+
+        it('should handle syncBarSpacingToSubCharts with no chart', () => {
+            mainChart.chart = null;
+            
+            expect(() => mainChart.syncBarSpacingToSubCharts()).not.toThrow();
+        });
+
+        it('should handle syncBarSpacingToSubCharts with invalid bar spacing', () => {
+            // Clear any previous calls
+            mainChart.volumeChart._timeScale.applyOptions.mockClear();
+            mainChart.squeezeChart._timeScale.applyOptions.mockClear();
+            
+            // Create a mock that returns NaN for barSpacing
+            const mockMainTimeScale = {
+                options: jest.fn().mockReturnValue({ barSpacing: NaN }),
+                getVisibleLogicalRange: jest.fn().mockReturnValue({ from: 0, to: 100 }),
+                setVisibleLogicalRange: jest.fn(),
+                setVisibleRange: jest.fn(),
+                applyOptions: jest.fn(),
+                fitContent: jest.fn()
+            };
+            
+            // Replace the main chart's timeScale method completely
+            mainChart.chart.timeScale = jest.fn().mockReturnValue(mockMainTimeScale);
+            
+            mainChart.syncBarSpacingToSubCharts();
+            
+            expect(mainChart.volumeChart._timeScale.applyOptions).not.toHaveBeenCalled();
+        });
+
+        it('should handle syncBarSpacingToSubCharts with no bar spacing', () => {
+            // Clear any previous calls
+            mainChart.volumeChart._timeScale.applyOptions.mockClear();
+            mainChart.squeezeChart._timeScale.applyOptions.mockClear();
+            
+            // Create a mock that returns null for barSpacing
+            const mockMainTimeScale = {
+                options: jest.fn().mockReturnValue({ barSpacing: null }),
+                getVisibleLogicalRange: jest.fn().mockReturnValue({ from: 0, to: 100 }),
+                setVisibleLogicalRange: jest.fn(),
+                setVisibleRange: jest.fn(),
+                applyOptions: jest.fn(),
+                fitContent: jest.fn()
+            };
+            
+            // Replace the main chart's timeScale method completely
+            mainChart.chart.timeScale = jest.fn().mockReturnValue(mockMainTimeScale);
+            
+            mainChart.syncBarSpacingToSubCharts();
+            
+            expect(mainChart.volumeChart._timeScale.applyOptions).not.toHaveBeenCalled();
+        });
+
+        it('should handle syncBarSpacingToSubCharts with sub chart failure', () => {
+            // Mock main chart
+            mainChart.chart.timeScale().options = jest.fn().mockReturnValue({ barSpacing: 15 });
+            
+            // Make volume chart applyOptions throw
+            mainChart.volumeChart._timeScale.applyOptions.mockImplementation(() => {
+                throw new Error('ApplyOptions failed');
+            });
+            
+            // Should not throw due to try-catch
+            expect(() => mainChart.syncBarSpacingToSubCharts()).not.toThrow();
+        });
+
+        it('should handle syncBarSpacingToSubCharts with missing sub charts', () => {
+            mainChart.volumeChart = null;
+            mainChart.squeezeChart = null;
+            
+            // Mock main chart
+            mainChart.chart.timeScale().options = jest.fn().mockReturnValue({ barSpacing: 15 });
+            
+            expect(() => mainChart.syncBarSpacingToSubCharts()).not.toThrow();
+        });
+    });
+
+    describe('volume data loading methods', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            // Setup mock volume chart with complete timeScale mock
+            const mockTimeScale = {
+                setVisibleLogicalRange: jest.fn(),
+                applyOptions: jest.fn(),
+                options: jest.fn().mockReturnValue({ barSpacing: 10 }),
+                getVisibleLogicalRange: jest.fn().mockReturnValue({ from: 0, to: 100 })
+            };
+            
+            const mockVolumeChart = {
+                loadVolumeData: jest.fn().mockResolvedValue(true),
+                setTimeRange: jest.fn(),
+                chart: {
+                    timeScale: () => mockTimeScale
+                },
+                _timeScale: mockTimeScale
+            };
+            mainChart.volumeChart = mockVolumeChart;
+            
+            // Setup test stock data
+            mainChart.stockInfos = [{
+                code: 'AAPL',
+                name: 'Apple Inc.',
+                data: [
+                    { time: '2023-01-01', open: 100, high: 105, low: 95, close: 102, volume: 1000 },
+                    { time: '2023-01-02', open: 102, high: 108, low: 100, close: 106, volume: 1200 }
+                ]
+            }];
+            
+            // Mock utility methods
+            mainChart.getTimeRange = jest.fn().mockReturnValue({ from: 1672531200, to: 1672617600 });
+            
+            // Mock ChartUtils
+            global.ChartUtils = {
+                processVolumeData: jest.fn().mockReturnValue([
+                    { time: '2023-01-01', value: 1000 },
+                    { time: '2023-01-02', value: 1200 }
+                ])
+            };
+            
+            // Mock requestAnimationFrame
+            global.requestAnimationFrame = jest.fn().mockImplementation(cb => {
+                // Execute immediately to avoid async timing issues
+                cb();
+                return 1;
+            });
+            
+            // Enhance main chart mock to prevent null access
+            mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue({ from: 0, to: 100 });
+            mainChart.chart.timeScale().options = jest.fn().mockReturnValue({ barSpacing: 10 });
+            
+            // Mock methods that might be called during loadVolumeDataToSubChart
+            mainChart.finalizeDataLoad = jest.fn();
+            mainChart.adjustTimeRangeToVisibleStocks = jest.fn();
+            mainChart.fixNegativeLogicalRangeImmediate = jest.fn();
+        });
+
+        afterEach(() => {
+            // Clear all timers to prevent async callbacks
+            jest.clearAllTimers();
+            jest.clearAllMocks();
+        });
+
+        it('should load volume data to sub chart successfully', async () => {
+            await mainChart.loadVolumeDataToSubChart('AAPL');
+            
+            expect(mainChart.volumeChart.loadVolumeData).toHaveBeenCalledWith('AAPL');
+            expect(mainChart.volumeChart.setTimeRange).toHaveBeenCalledWith({ from: 1672531200, to: 1672617600 });
+            expect(mainChart.volumeChart._timeScale.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 0, to: 100 });
+            expect(mainChart.volumeChart._timeScale.applyOptions).toHaveBeenCalledWith({ barSpacing: 10 });
+        });
+
+        it('should handle loadVolumeDataToSubChart with no volume chart', async () => {
+            mainChart.volumeChart = null;
+            
+            await expect(mainChart.loadVolumeDataToSubChart('AAPL')).resolves.not.toThrow();
+        });
+
+        it('should handle loadVolumeDataToSubChart with no stock data', async () => {
+            await mainChart.loadVolumeDataToSubChart('NONEXISTENT');
+            
+            expect(mainChart.volumeChart.loadVolumeData).not.toHaveBeenCalled();
+        });
+
+        it('should handle loadVolumeDataToSubChart with missing stock info', async () => {
+            mainChart.stockInfos = [];
+            
+            await mainChart.loadVolumeDataToSubChart('AAPL');
+            
+            expect(mainChart.volumeChart.loadVolumeData).not.toHaveBeenCalled();
+        });
+
+        it('should handle loadVolumeDataToSubChart with stock having no data', async () => {
+            mainChart.stockInfos = [{
+                code: 'AAPL',
+                name: 'Apple Inc.',
+                data: null
+            }];
+            
+            await mainChart.loadVolumeDataToSubChart('AAPL');
+            
+            expect(mainChart.volumeChart.loadVolumeData).not.toHaveBeenCalled();
+        });
+
+        it('should handle loadVolumeDataToSubChart with loadVolumeData failure', async () => {
+            mainChart.volumeChart.loadVolumeData.mockRejectedValue(new Error('Load failed'));
+            
+            await expect(mainChart.loadVolumeDataToSubChart('AAPL')).resolves.not.toThrow();
+        });
+
+        it('should handle loadVolumeDataToSubChart with no time range', async () => {
+            mainChart.getTimeRange.mockReturnValue(null);
+            
+            await mainChart.loadVolumeDataToSubChart('AAPL');
+            
+            expect(mainChart.volumeChart.loadVolumeData).toHaveBeenCalled();
+            expect(mainChart.volumeChart.setTimeRange).not.toHaveBeenCalled();
+        });
+
+        it('should apply pending synchronization data', async () => {
+            // Setup pending sync data
+            mainChart.volumeChart._pendingTimeRange = { from: 1672531200, to: 1672617600 };
+            mainChart.volumeChart._pendingLogicalRange = { from: 5, to: 95 };
+            mainChart.volumeChart._pendingTimeScaleOptions = { barSpacing: 12, rightOffset: 10 };
+            
+            await mainChart.loadVolumeDataToSubChart('AAPL');
+            
+            // Verify pending data was applied
+            expect(mainChart.volumeChart._timeScale.applyOptions).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    barSpacing: 12,
+                    rightOffset: 10
+                })
+            );
+            
+            // Verify pending data was cleared
+            expect(mainChart.volumeChart._pendingTimeRange).toBeUndefined();
+            expect(mainChart.volumeChart._pendingLogicalRange).toBeUndefined();
+            expect(mainChart.volumeChart._pendingTimeScaleOptions).toBeUndefined();
+        });
+    });
+
+    describe('additional loadData error scenarios', () => {
+        beforeEach(() => {
+            mainChart = new MainChart(mockContainer);
+            mainChart.create();
+            
+            // Mock methods that might be called during async operations
+            mainChart.finalizeDataLoad = jest.fn();
+            mainChart.adjustTimeRangeToVisibleStocks = jest.fn();
+            mainChart.fixNegativeLogicalRangeImmediate = jest.fn();
+            mainChart.updateInfoBar = jest.fn();
+            
+            // Mock loadStockData to prevent it from being called
+            mainChart.loadStockData = jest.fn().mockResolvedValue(true);
+            mainChart.prepareForDataLoad = jest.fn();
+        });
+
+        afterEach(() => {
+            // Clear all timers to prevent async callbacks
+            jest.clearAllTimers();
+            jest.clearAllMocks();
+        });
+
+        it('should handle loadData with malformed JSON data', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve('not an array')
+            });
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
+        });
+
+        it('should handle loadData with missing required fields', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve([
+                    { time: '2023-01-01', open: 100 }, // missing high, low, close
+                    { high: 105, low: 95, close: 102 }, // missing time, open
+                    null, // null data
+                    { time: '2023-01-03', open: 'invalid', high: 108, low: 100, close: 106 } // invalid open
+                ])
+            });
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
+        });
+
+        it('should handle loadData with empty response array', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve([])
+            });
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
+        });
+
+        it('should handle loadData with mixed valid and invalid data', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve([
+                    { time: '2023-01-01', open: 100, high: 105, low: 95, close: 102, volume: 1000 }, // valid
+                    { time: '2023-01-02', open: NaN, high: 105, low: 95, close: 102, volume: 1000 }, // invalid open
+                    { time: '2023-01-03', open: 100, high: 105, low: 95, close: 102, volume: 1000 }, // valid
+                    undefined, // undefined data
+                    { time: '2023-01-05', open: 100, high: 90, low: 95, close: 102, volume: 1000 } // high < low
+                ])
+            });
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
+        });
+
+        it('should handle loadData with null response', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve(null)
+            });
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
+        });
+
+        it('should handle loadData with timeout error', async () => {
+            global.fetch = jest.fn().mockImplementation(() => 
+                Promise.reject(new Error('Request timeout'))
+            );
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
+        });
+
+        it('should handle loadData with response missing json method', async () => {
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true
+                // missing json method
+            });
+            
+            const codes = ['AAPL'];
+            await expect(mainChart.loadData(codes, [])).resolves.not.toThrow();
         });
     });
 }); 
