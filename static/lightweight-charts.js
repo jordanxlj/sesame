@@ -4720,6 +4720,7 @@ if (typeof module !== 'undefined' && module.exports) {
         MainChart,
         VolumeChart,
         SqueezeChart,
+        ChartRegistry,
         globalTimeScale
     };
 } else if (typeof window !== 'undefined') {
@@ -4733,6 +4734,7 @@ if (typeof module !== 'undefined' && module.exports) {
         MainChart,
         VolumeChart,
         SqueezeChart,
+        ChartRegistry,
         globalTimeScale
     };
 }

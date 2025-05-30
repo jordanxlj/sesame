@@ -5,7 +5,7 @@
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test:coverage": "jest --coverage --verbose",
     "test:verbose": "jest --verbose"
   },
   "devDependencies": {
@@ -17,12 +17,14 @@
     "testEnvironment": "jsdom",
     "setupFilesAfterEnv": ["<rootDir>/jest.setup.js"],
     "collectCoverageFrom": [
-      "../static/lightweight-charts.js"
+      "<rootDir>/../static/*.js"
     ],
     "coverageDirectory": "coverage",
     "coverageReporters": ["text", "lcov", "html"],
     "testMatch": [
       "**/*.test.js"
-    ]
+    ],
+    "verbose": true,
+    "collectCoverage": true
   }
 } 

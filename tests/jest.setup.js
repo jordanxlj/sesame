@@ -1,7 +1,7 @@
 // Jest 测试环境设置文件
 
 // Mock LightweightCharts library
-global.LightweightCharts = {
+const mockLightweightCharts = {
     createChart: jest.fn().mockImplementation((container, options) => ({
         addCandlestickSeries: jest.fn().mockReturnValue({
             setData: jest.fn(),
@@ -52,6 +52,9 @@ global.LightweightCharts = {
     }))
 };
 
+// Set up both global and window LightweightCharts
+global.LightweightCharts = mockLightweightCharts;
+
 // Mock DOM elements
 global.document = {
     createElement: jest.fn().mockImplementation((tagName) => ({
@@ -84,7 +87,8 @@ global.window = {
         getPropertyValue: jest.fn().mockReturnValue('')
     }),
     requestAnimationFrame: jest.fn((callback) => setTimeout(callback, 16)),
-    cancelAnimationFrame: jest.fn()
+    cancelAnimationFrame: jest.fn(),
+    LightweightCharts: mockLightweightCharts
 };
 
 // Mock console methods for cleaner test output
