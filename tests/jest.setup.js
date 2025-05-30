@@ -22,8 +22,8 @@ const mockLightweightCharts = {
         timeScale: jest.fn().mockReturnValue({
             setVisibleRange: jest.fn(),
             getVisibleRange: jest.fn().mockReturnValue({ 
-                from: '2023-01-01', 
-                to: '2023-12-31' 
+                from: 1672531200, 
+                to: 1704067199 
             }),
             subscribeVisibleTimeRangeChange: jest.fn(),
             subscribeVisibleLogicalRangeChange: jest.fn(),
