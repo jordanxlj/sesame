@@ -42,18 +42,27 @@ const mockLightweightCharts = {
             setVisibleLogicalRange: jest.fn(),
             fitContent: jest.fn()
         }),
-        priceScale: jest.fn().mockReturnValue({
+        priceScale: jest.fn().mockImplementation((id) => ({
             applyOptions: jest.fn(),
             options: jest.fn().mockReturnValue({
                 scaleMargins: { top: 0.1, bottom: 0.1 }
             })
-        }),
+        })),
         subscribeCrosshairMove: jest.fn()
     }))
 };
 
 // Set up both global and window LightweightCharts
 global.LightweightCharts = mockLightweightCharts;
+
+// Mock global SharedTimeScale for MainChart
+global.globalTimeScale = {
+    registerChart: jest.fn(),
+    unregisterChart: jest.fn(),
+    syncAllCharts: jest.fn(),
+    updateDomain: jest.fn(),
+    updateLogicalRange: jest.fn()
+};
 
 // Mock DOM elements
 global.document = {
@@ -72,8 +81,14 @@ global.document = {
             right: 1000
         }),
         addEventListener: jest.fn(),
-        removeEventListener: jest.fn()
+        removeEventListener: jest.fn(),
+        remove: jest.fn(),
+        id: '',
+        className: '',
+        textContent: '',
+        click: jest.fn()
     })),
+    getElementById: jest.fn().mockReturnValue(null),
     body: {
         appendChild: jest.fn(),
         removeChild: jest.fn()
