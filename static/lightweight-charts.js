@@ -3555,70 +3555,83 @@ class MainChart extends BaseChart {
      */
     syncTimeRangeToVolumeChart(timeRange) {
         if (this.volumeChart && timeRange) {
-            // 检查成交量子图是否有数据系列
-            if (this.volumeChart.volumeSeries) {
-                // 获取主图的完整时间轴配置
-                const mainTimeScaleOptions = this.chart.timeScale().options();
-                const mainLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
-                
-                console.log('[VOL-SYNC] 主图时间轴配置:', {
-                    barSpacing: mainTimeScaleOptions.barSpacing,
-                    rightOffset: mainTimeScaleOptions.rightOffset,
-                    logicalRange: mainLogicalRange
-                });
-                
-                // 完全同步时间轴配置
-                this.volumeChart.chart.timeScale().applyOptions({
-                    barSpacing: mainTimeScaleOptions.barSpacing,
-                    rightOffset: mainTimeScaleOptions.rightOffset,
-                    fixLeftEdge: mainTimeScaleOptions.fixLeftEdge,
-                    fixRightEdge: mainTimeScaleOptions.fixRightEdge,
-                    lockVisibleTimeRangeOnResize: mainTimeScaleOptions.lockVisibleTimeRangeOnResize
-                });
-                
-                // 同步可见时间范围
-                this.volumeChart.setTimeRange(timeRange);
-                
-                // 立即同步逻辑范围 - 这是关键步骤
-                if (mainLogicalRange) {
-                    console.log('[VOL-SYNC] 同步逻辑范围:', mainLogicalRange);
-                    this.volumeChart.chart.timeScale().setVisibleLogicalRange(mainLogicalRange);
-                }
-                
-                // 验证同步结果
-                this.createTimer(() => {
-                    const volumeLogicalRange = this.volumeChart.chart.timeScale().getVisibleLogicalRange();
-                    const volumeTimeScaleOptions = this.volumeChart.chart.timeScale().options();
+            try {
+                // 检查成交量子图是否有数据系列
+                if (this.volumeChart.volumeSeries) {
+                    // 获取主图的完整时间轴配置
+                    const mainTimeScaleOptions = this.chart.timeScale().options();
+                    const mainLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
                     
-                    console.log('[VOL-SYNC] 同步后成交量图配置:', {
-                        barSpacing: volumeTimeScaleOptions.barSpacing,
-                        rightOffset: volumeTimeScaleOptions.rightOffset,
-                        logicalRange: volumeLogicalRange
+                    console.log('[VOL-SYNC] 主图时间轴配置:', {
+                        barSpacing: mainTimeScaleOptions.barSpacing,
+                        rightOffset: mainTimeScaleOptions.rightOffset,
+                        logicalRange: mainLogicalRange
                     });
                     
-                    // 检查同步是否成功
-                    const spacingDiff = Math.abs(mainTimeScaleOptions.barSpacing - volumeTimeScaleOptions.barSpacing);
-                    const logicalFromDiff = Math.abs((mainLogicalRange?.from || 0) - (volumeLogicalRange?.from || 0));
-                    const logicalToDiff = Math.abs((mainLogicalRange?.to || 0) - (volumeLogicalRange?.to || 0));
+                    // 完全同步时间轴配置
+                    this.volumeChart.chart.timeScale().applyOptions({
+                        barSpacing: mainTimeScaleOptions.barSpacing,
+                        rightOffset: mainTimeScaleOptions.rightOffset,
+                        fixLeftEdge: mainTimeScaleOptions.fixLeftEdge,
+                        fixRightEdge: mainTimeScaleOptions.fixRightEdge,
+                        lockVisibleTimeRangeOnResize: mainTimeScaleOptions.lockVisibleTimeRangeOnResize
+                    });
                     
-                    if (spacingDiff > 0.01 || logicalFromDiff > 0.01 || logicalToDiff > 0.01) {
-                        console.warn('[VOL-SYNC] 同步不完全，尝试重新同步...', {
-                            spacingDiff, logicalFromDiff, logicalToDiff
-                        });
-                        
-                        // 重新强制同步
-                        this.forceTimeAxisAlignment();
-                    } else {
-                        console.log('[VOL-SYNC] ✅ 时间轴同步成功');
+                    // 同步可见时间范围
+                    this.volumeChart.setTimeRange(timeRange);
+                    
+                    // 立即同步逻辑范围 - 这是关键步骤
+                    if (mainLogicalRange) {
+                        console.log('[VOL-SYNC] 同步逻辑范围:', mainLogicalRange);
+                        this.volumeChart.chart.timeScale().setVisibleLogicalRange(mainLogicalRange);
                     }
-                }, 50);
-                
-            } else {
-                // 暂无数据，记录待同步的范围
-                this.volumeChart._pendingTimeRange = timeRange;
-                this.volumeChart._pendingLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
-                this.volumeChart._pendingTimeScaleOptions = this.chart.timeScale().options();
-                console.log('[VOL]  pending sync - no data yet');
+                    
+                    // 验证同步结果
+                    this.createTimer(() => {
+                        try {
+                            const volumeLogicalRange = this.volumeChart.chart.timeScale().getVisibleLogicalRange();
+                            const volumeTimeScaleOptions = this.volumeChart.chart.timeScale().options();
+                            
+                            console.log('[VOL-SYNC] 同步后成交量图配置:', {
+                                barSpacing: volumeTimeScaleOptions.barSpacing,
+                                rightOffset: volumeTimeScaleOptions.rightOffset,
+                                logicalRange: volumeLogicalRange
+                            });
+                            
+                            // 检查同步是否成功
+                            const spacingDiff = Math.abs(mainTimeScaleOptions.barSpacing - volumeTimeScaleOptions.barSpacing);
+                            const logicalFromDiff = Math.abs((mainLogicalRange?.from || 0) - (volumeLogicalRange?.from || 0));
+                            const logicalToDiff = Math.abs((mainLogicalRange?.to || 0) - (volumeLogicalRange?.to || 0));
+                            
+                            if (spacingDiff > 0.01 || logicalFromDiff > 0.01 || logicalToDiff > 0.01) {
+                                console.warn('[VOL-SYNC] 同步不完全，尝试重新同步...', {
+                                    spacingDiff, logicalFromDiff, logicalToDiff
+                                });
+                                
+                                // 重新强制同步
+                                this.forceTimeAxisAlignment();
+                            } else {
+                                console.log('[VOL-SYNC] ✅ 时间轴同步成功');
+                            }
+                        } catch (error) {
+                            console.warn('[VOL-SYNC] 验证同步结果时出错:', error);
+                        }
+                    }, 50);
+                    
+                } else {
+                    // 暂无数据，记录待同步的范围
+                    try {
+                        this.volumeChart._pendingTimeRange = timeRange;
+                        this.volumeChart._pendingLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
+                        this.volumeChart._pendingTimeScaleOptions = this.chart.timeScale().options();
+                        console.log('[VOL] pending sync - no data yet');
+                    } catch (error) {
+                        console.warn('[VOL-SYNC] 获取待同步配置时出错:', error);
+                        this.volumeChart._pendingTimeRange = timeRange;
+                    }
+                }
+            } catch (error) {
+                console.warn('同步时间轴到成交量子图失败:', error);
             }
         }
     }
