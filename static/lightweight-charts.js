@@ -1102,62 +1102,47 @@ class BaseChart extends EventEmitter {
 // Main Chart Class
 // ================================
 class MainChart extends BaseChart {
-        constructor(container) {
-        super(container, {
-            layout: {
-                background: { color: '#ffffff' },
-                textColor: '#333'
-            },
-            grid: {
-                vertLines: { color: '#e0e0e0' },
-                horzLines: { color: '#e0e0e0' }
-            },
-            timeScale: {
-                timeVisible: true,
-                secondsVisible: false,
-                barSpacing: 6,
-                rightOffset: 12
-            }
-        });
+    constructor(container) {
+        super(container);
         
-        // 共享时间刻度集成
-        this.sharedTimeScale = globalTimeScale;
-        this.chartId = ChartUtils.generateId('main');
+        // 初始化图表数据存储
+        this.stockInfos = [];
+        this.stockVisibility = [];
+        this.originalStockData = [];
+        this.normalizationRatios = [];
+        this.seriesMap = new Map();
         
-        // 注册到全局时间刻度管理器（主图）
-        this.sharedTimeScale.registerChart(this.chartId, this, true);
+        // 子图管理
+        this.volumeChart = null;
+        this.squeezeChart = null;
+        this.subCharts = [];
         
-        this.stockInfos = []; // 存储股票信息的数组
-        this.stockVisibility = []; // 股票可见性状态数组
-        this.originalStockData = []; // 存储原始股票数据
-        this.normalizationRatios = []; // 存储归一化比例
-        this.seriesMap = new Map(); // series实例映射
-        this.volumeChart = null; // 成交量子图实例
-        this.squeezeChart = null; // Squeeze子图实例
-        this.normalizationEnabled = false; // 归一化状态
-        this.originalPriceRanges = new Map(); // 存储原始价格范围
-        this.originalIndicatorData = new Map(); // 存储原始指标数据
-        this._isVolumeLoaded = false; // 成交量数据加载状态
-        this._hasInitialFit = false; // 是否已进行初始适配
-        this._userIsZooming = false; // 用户是否正在缩放
+        // 归一化状态
+        this.normalizationEnabled = false;
         
-        // 主图特有属性
-        this.volumeSeries = null;
+        // 系列管理
         this.candleSeries = [];
         this.indicatorSeries = [];
-        this.stockIndicatorSeries = []; // 存储每只股票的指标系列
-        this.originalIndicatorData = []; // 存储原始指标数据，用于归一化恢复
+        this.stockIndicatorSeries = [];
+        
+        // 指标数据原始备份（用于归一化）
+        this.originalIndicatorData = [];
+        
+        // 当前OHLC数据引用
         this.currentOhlcData = null;
-        this.subCharts = [];
-        this.legendContainer = null; // 图例容器
         
-        // 成交量子图相关
-        this.volumeContainer = null;
+        // 价格信息栏状态
+        this.legendContainer = null;
         
-        // Squeeze子图相关
-        this.squeezeContainer = null;
+        // SharedTimeScale用于多图表同步（作为主图表）
+        this.sharedTimeScale = globalTimeScale;
+        this.chartId = `main_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        this.sharedTimeScale.registerChart(this.chartId, this, true); // true表示主图表
         
-        console.log(`📊 MainChart 已创建: ${this.id}`);
+        // 跟踪所有定时器ID，用于destroy时清除
+        this.timers = [];
+        
+        console.log(`📊 MainChart 初始化完成: ${this.id}, chartId: ${this.chartId}`);
     }
     
     onCreated() {
@@ -1588,7 +1573,12 @@ class MainChart extends BaseChart {
         });
         
         // 买卖信号标记会自动跟随K线位置，无需手动调整
-        if (this.originalIndicatorData[stockIndex] && this.originalIndicatorData[stockIndex].markers && this.candleSeries[stockIndex]) {
+        // 添加安全检查，确保数组和对象存在
+        if (this.originalIndicatorData && 
+            this.originalIndicatorData[stockIndex] && 
+            this.originalIndicatorData[stockIndex].markers && 
+            this.candleSeries && 
+            this.candleSeries[stockIndex]) {
             this.candleSeries[stockIndex].setMarkers(this.originalIndicatorData[stockIndex].markers);
         }
     }
@@ -1641,7 +1631,11 @@ class MainChart extends BaseChart {
         });
         
         // 恢复原始买卖信号标记
-        if (this.originalIndicatorData[stockIndex] && this.originalIndicatorData[stockIndex].markers && this.candleSeries[stockIndex]) {
+        if (this.originalIndicatorData && 
+            this.originalIndicatorData[stockIndex] && 
+            this.originalIndicatorData[stockIndex].markers && 
+            this.candleSeries && 
+            this.candleSeries[stockIndex]) {
             this.candleSeries[stockIndex].setMarkers(this.originalIndicatorData[stockIndex].markers);
         }
     }
@@ -2059,7 +2053,7 @@ class MainChart extends BaseChart {
             await Promise.all(promises);
             
             // 完成数据加载
-            setTimeout(() => {
+            this.createTimer(() => {
                 this.finalizeDataLoad();
                 console.log('✅ MainChart 数据加载完成');
             }, 50);
@@ -2673,7 +2667,7 @@ class MainChart extends BaseChart {
                 this.chart.timeScale().fitContent();
                 
                 // 🔍 DEBUG: 记录 fitContent 后的逻辑范围
-                setTimeout(() => {
+                this.createTimer(() => {
                     const afterFitLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
                     console.log(`🔍 [FINALIZE] fitContent 后 logical range:`, afterFitLogicalRange);
                     
@@ -2683,12 +2677,12 @@ class MainChart extends BaseChart {
                 }, 10);
                 
                 // 然后调整到可见股票的范围
-                setTimeout(() => {
+                this.createTimer(() => {
                     console.log(`🔍 [FINALIZE] 执行 adjustTimeRangeToVisibleStocks 前 logical range:`, this.chart.timeScale().getVisibleLogicalRange());
                     this.adjustTimeRangeToVisibleStocks();
                     
                     // 记录调整后的逻辑范围
-                    setTimeout(() => {
+                    this.createTimer(() => {
                         const afterAdjustLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
                         console.log(`🔍 [FINALIZE] adjustTimeRangeToVisibleStocks 后 logical range:`, afterAdjustLogicalRange);
                     }, 10);
@@ -2705,24 +2699,24 @@ class MainChart extends BaseChart {
         this.diagnoseTimeScale();
         
         // 优化价格范围显示
-        setTimeout(() => {
+        this.createTimer(() => {
             this.optimizePriceRange();
         }, 200);
         
         // 初始化价格信息栏（已包含股票列表）
-        setTimeout(() => {
+        this.createTimer(() => {
             this.updateInfoBarWithLatestData();
         }, 100);
         
         // 加载成交量数据到子图
         if (this.volumeChart) {
-            setTimeout(async () => {
+            this.createTimer(async () => {
                 const mainStockCode = this.stockInfos[0]?.code;
                 if (mainStockCode) {
                     await this.loadVolumeDataToSubChart(mainStockCode);
                     
                     // 使用SharedTimeScale统一同步
-                    setTimeout(() => {
+                    this.createTimer(() => {
                         this.sharedTimeScale.forceSync();
                         console.log('✅ [SHARED-TIME] 数据加载完成后强制同步');
                     }, 100);
@@ -2731,7 +2725,7 @@ class MainChart extends BaseChart {
         }
         
         // 加载Squeeze数据到子图
-        setTimeout(() => {
+        this.createTimer(() => {
             this.loadSqueezeDataToSubChart();
         }, 250);
     }
@@ -2881,7 +2875,7 @@ class MainChart extends BaseChart {
                     this.chart.timeScale().setVisibleRange(newRange);
                     
                     // 检查是否成功
-                    setTimeout(() => {
+                    this.createTimer(() => {
                         const afterRange = this.chart.timeScale().getVisibleRange();
                         console.log('🔍 [TEST] 缩放后的范围:', afterRange);
                         
@@ -2968,7 +2962,7 @@ class MainChart extends BaseChart {
             this.chart.timeScale().setVisibleRange(newRange);
             
             // 延迟清除缩放标记
-            setTimeout(() => {
+            this.createTimer(() => {
                 this._userIsZooming = false;
             }, 500);
             
@@ -3010,7 +3004,7 @@ class MainChart extends BaseChart {
             });
             
             // 强制重新计算价格范围（但不影响时间轴）
-            setTimeout(() => {
+            this.createTimer(() => {
                 try {
                     // 不使用fitContent，避免覆盖用户的缩放操作
                     // 只重新计算价格轴的自动缩放
@@ -3100,6 +3094,9 @@ class MainChart extends BaseChart {
      */
     destroy() {
         try {
+            // 清除所有定时器
+            this.clearAllTimers();
+            
             // 销毁成交量子图
             this.destroyVolumeSubChart();
             
@@ -3562,7 +3559,7 @@ class MainChart extends BaseChart {
                 }
                 
                 // 验证同步结果
-                setTimeout(() => {
+                this.createTimer(() => {
                     const volumeLogicalRange = this.volumeChart.chart.timeScale().getVisibleLogicalRange();
                     const volumeTimeScaleOptions = this.volumeChart.chart.timeScale().options();
                     
@@ -3716,7 +3713,7 @@ class MainChart extends BaseChart {
                 this.squeezeChart.setTimeRange(timeRange);
             } else {
                 // 如果Squeeze子图还没有数据系列，延迟同步
-                setTimeout(() => {
+                this.createTimer(() => {
                     if (this.squeezeChart && this.squeezeChart.series && this.squeezeChart.series.length > 0) {
                         this.squeezeChart.setTimeRange(timeRange);
                     }
@@ -3790,7 +3787,7 @@ class MainChart extends BaseChart {
             console.log(`🔧 [MAIN-FIX] 尝试fitContent修复...`);
             this.chart.timeScale().fitContent();
             
-            setTimeout(() => {
+            this.createTimer(() => {
                 const afterFitRange = this.chart.timeScale().getVisibleLogicalRange();
                 console.log(`🔍 [MAIN-FIX] fitContent后逻辑范围:`, afterFitRange);
                 
@@ -3808,7 +3805,7 @@ class MainChart extends BaseChart {
                     this.chart.timeScale().setVisibleLogicalRange(safeRange);
                     
                     // 验证最终结果
-                    setTimeout(() => {
+                    this.createTimer(() => {
                         const finalRange = this.chart.timeScale().getVisibleLogicalRange();
                         console.log(`🔍 [MAIN-FIX] 最终逻辑范围:`, finalRange);
                         
@@ -3905,7 +3902,7 @@ class MainChart extends BaseChart {
             }
             
             // 验证对齐结果
-            setTimeout(() => {
+            this.createTimer(() => {
                 this.verifyTimeAxisAlignment();
             }, 100);
             
@@ -3969,6 +3966,34 @@ class MainChart extends BaseChart {
         } else {
             console.warn(`⚠️ [VERIFY-ALIGN] 发现对齐问题: ${alignmentIssues.join(', ')}`);
         }
+    }
+
+    /**
+     * 创建并跟踪定时器
+     */
+    createTimer(callback, delay) {
+        const timerId = setTimeout(callback, delay);
+        this.timers.push(timerId);
+        return timerId;
+    }
+
+    /**
+     * 清除指定定时器
+     */
+    clearTimer(timerId) {
+        clearTimeout(timerId);
+        const index = this.timers.indexOf(timerId);
+        if (index > -1) {
+            this.timers.splice(index, 1);
+        }
+    }
+
+    /**
+     * 清除所有定时器
+     */
+    clearAllTimers() {
+        this.timers.forEach(timerId => clearTimeout(timerId));
+        this.timers = [];
     }
 }
 

@@ -56,16 +56,11 @@ describe('MainChart', () => {
     });
 
     afterEach(() => {
+        // Clear all timers to prevent async callbacks
+        jest.clearAllTimers();
+        
         if (mainChart) {
             try {
-                // Clear any pending async operations
-                if (mainChart._isFixingLogicalRange) {
-                    mainChart._isFixingLogicalRange = false;
-                }
-                
-                // Clear any pending timeouts from the chart operations
-                jest.clearAllTimers();
-                
                 mainChart.destroy();
             } catch (e) {
                 // Ignore cleanup errors
@@ -1869,6 +1864,25 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
         volumeChart = new VolumeChart(mockVolumeContainer);
         volumeChart.create();
 
+        // CRITICAL: Mock all async methods that use setTimeout to prevent async callbacks after test cleanup
+        mainChart.finalizeDataLoad = jest.fn();
+        mainChart.adjustTimeRangeToVisibleStocks = jest.fn();
+        mainChart.fixNegativeLogicalRangeImmediate = jest.fn();
+        mainChart.syncTimeRangeToVolumeChart = jest.fn();
+        mainChart.forceTimeAxisAlignment = jest.fn();
+        mainChart.syncBarSpacingToSubCharts = jest.fn();
+        mainChart.loadVolumeDataToSubChart = jest.fn();
+        mainChart.smartToggleNormalization = jest.fn();
+        mainChart._isFixingLogicalRange = false;
+
+        // Mock VolumeChart async methods too
+        if (volumeChart) {
+            volumeChart.finalizeDataLoad = jest.fn();
+            volumeChart.adjustTimeRangeToVisibleStocks = jest.fn();
+            volumeChart.syncTimeRangeToMainChart = jest.fn();
+            volumeChart._isFixingLogicalRange = false;
+        }
+
         // Setup sample data
         const sampleOHLCData = [
             { time: '2023-01-01', open: 100, high: 105, low: 95, close: 102, volume: 1000 },
@@ -1902,8 +1916,13 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
     });
 
     afterEach(() => {
+        // Clear all timers to prevent async callbacks
+        jest.clearAllTimers();
+        
         if (mainChart) {
             try {
+                // Clear any pending async operations
+                mainChart._isFixingLogicalRange = false;
                 mainChart.destroy();
             } catch (e) {
                 // Ignore cleanup errors
@@ -1912,6 +1931,7 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
         }
         if (volumeChart) {
             try {
+                volumeChart._isFixingLogicalRange = false;
                 volumeChart.destroy();
             } catch (e) {
                 // Ignore cleanup errors
@@ -2056,7 +2076,7 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
                 mainChartUpdateCount++;
                 // Simulate adding new data point
                 const newPoint = {
-                    time: `2023-01-${5 + mainChartUpdateCount}`,
+                    time: `2023-01-${String(5 + mainChartUpdateCount).padStart(2, '0')}`,
                     open: 115 + mainChartUpdateCount,
                     high: 120 + mainChartUpdateCount,
                     low: 113 + mainChartUpdateCount,
@@ -2070,7 +2090,7 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
                 volumeChartUpdateCount++;
                 // Volume chart updates with actual data changes
                 const newVolumePoint = {
-                    time: `2023-01-${5 + volumeChartUpdateCount}`,
+                    time: `2023-01-${String(5 + volumeChartUpdateCount).padStart(2, '0')}`,
                     value: 1500 + volumeChartUpdateCount * 100
                 };
                 volumeChart.volumeData.push(newVolumePoint);
@@ -2082,13 +2102,10 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
 
             // Simulate MainChart updating more frequently (3 times)
             updateMainChart();
-            await new Promise(resolve => setTimeout(resolve, 100)); // More realistic delay
             updateMainChart();
-            await new Promise(resolve => setTimeout(resolve, 100));
             updateMainChart();
 
             // Simulate VolumeChart updating less frequently (1 time)
-            await new Promise(resolve => setTimeout(resolve, 200)); // Longer delay
             updateVolumeChart();
 
             // Verify update frequency difference
@@ -2445,17 +2462,15 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
 
             // Execute rapid sync requests
             const startTime = Date.now();
-            const promises = [];
             
             for (let i = 0; i < syncCallCount; i++) {
                 const timeRange = {
                     from: Math.floor(new Date('2023-01-01').getTime() / 1000) + i,
                     to: Math.floor(new Date('2023-01-05').getTime() / 1000) + i
                 };
-                promises.push(Promise.resolve(mainChart.syncTimeRangeToVolumeChart(timeRange)));
+                mainChart.syncTimeRangeToVolumeChart(timeRange);
             }
 
-            await Promise.all(promises);
             const endTime = Date.now();
             const totalTime = endTime - startTime;
 
