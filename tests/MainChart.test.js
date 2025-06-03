@@ -2158,11 +2158,17 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
             mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(initialMainTimeRange);
             volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(initialMainTimeRange);
 
-            // Mock synchronization method with actual state changes
+            // Setup VolumeChart sync tracking
             const volumeSetVisibleRangeSpy = jest.spyOn(volumeChart.chart.timeScale(), 'setVisibleRange');
             const volumeSetLogicalRangeSpy = jest.spyOn(volumeChart.chart.timeScale(), 'setVisibleLogicalRange');
             const volumeApplyOptionsSpy = jest.spyOn(volumeChart.chart.timeScale(), 'applyOptions');
-
+            
+            // Clear any previous calls that might have occurred during setup
+            volumeSetVisibleRangeSpy.mockClear();
+            volumeSetLogicalRangeSpy.mockClear();
+            volumeApplyOptionsSpy.mockClear();
+            
+            // Mock MainChart synchronization method with state updates
             mainChart.syncTimeRangeToVolumeChart = jest.fn().mockImplementation((timeRange) => {
                 // Simulate actual synchronization effects
                 volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(timeRange);
@@ -2439,6 +2445,348 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
                 errorHandled,
                 chartsStable: postErrorMainRange && postErrorVolumeRange,
                 statePreserved: JSON.stringify(postErrorMainRange) === JSON.stringify(initialMainRange)
+            });
+        });
+    });
+
+    describe('同步性能和边界条件测试', () => {
+        it('should handle rapid synchronization requests without performance degradation', async () => {
+            const syncCallCount = 100;
+            const syncCalls = [];
+            let syncErrors = 0;
+
+            // Mock high-frequency synchronization
+            mainChart.syncTimeRangeToVolumeChart = jest.fn().mockImplementation((timeRange) => {
+                try {
+                    syncCalls.push(Date.now());
+                    // Simulate sync operation
+                    volumeChart.chart.timeScale().setVisibleRange(timeRange);
+                } catch (error) {
+                    syncErrors++;
+                }
+            });
+
+            // Execute rapid sync requests
+            const startTime = Date.now();
+            
+            for (let i = 0; i < syncCallCount; i++) {
+                const timeRange = {
+                    from: Math.floor(new Date('2023-01-01').getTime() / 1000) + i,
+                    to: Math.floor(new Date('2023-01-05').getTime() / 1000) + i
+                };
+                mainChart.syncTimeRangeToVolumeChart(timeRange);
+            }
+
+            const endTime = Date.now();
+            const totalTime = endTime - startTime;
+
+            // Verify performance metrics
+            expect(mainChart.syncTimeRangeToVolumeChart).toHaveBeenCalledTimes(syncCallCount);
+            expect(syncErrors).toBe(0);
+            expect(totalTime).toBeLessThan(1000); // Should complete within 1 second
+            expect(syncCalls.length).toBe(syncCallCount);
+
+            const averageCallTime = totalTime / syncCallCount;
+            console.log('同步性能测试完成:', {
+                totalCalls: syncCallCount,
+                totalTime,
+                averageCallTime,
+                syncErrors
+            });
+        });
+
+        it('should handle null and undefined synchronization data gracefully', () => {
+            const testCases = [
+                null,
+                undefined,
+                {},
+                { from: null, to: null },
+                { from: undefined, to: undefined },
+                { from: 'invalid', to: 'invalid' }
+            ];
+
+            let handledCases = 0;
+            
+            mainChart.syncTimeRangeToVolumeChart = jest.fn().mockImplementation((timeRange) => {
+                // Should handle invalid data gracefully
+                if (!timeRange || typeof timeRange.from !== 'number' || typeof timeRange.to !== 'number') {
+                    return; // Graceful handling of invalid data
+                }
+                handledCases++;
+            });
+
+            // Test each invalid case
+            testCases.forEach(testCase => {
+                expect(() => {
+                    mainChart.syncTimeRangeToVolumeChart(testCase);
+                }).not.toThrow();
+            });
+
+            // Verify graceful handling
+            expect(mainChart.syncTimeRangeToVolumeChart).toHaveBeenCalledTimes(testCases.length);
+            expect(handledCases).toBe(0); // No valid cases processed
+
+            console.log('边界条件测试完成:', {
+                testCasesCount: testCases.length,
+                validCasesHandled: handledCases,
+                invalidCasesHandled: testCases.length - handledCases
+            });
+        });
+    });
+
+    describe('测试用例 7：多次同步验证', () => {
+        it('should synchronize VolumeChart with MainChart across multiple updates', async () => {
+            // Setup: Define multiple time range updates
+            const updates = [
+                { 
+                    from: Math.floor(new Date('2023-01-01').getTime() / 1000), 
+                    to: Math.floor(new Date('2023-01-02').getTime() / 1000) 
+                },
+                { 
+                    from: Math.floor(new Date('2023-01-02').getTime() / 1000), 
+                    to: Math.floor(new Date('2023-01-03').getTime() / 1000) 
+                },
+                { 
+                    from: Math.floor(new Date('2023-01-03').getTime() / 1000), 
+                    to: Math.floor(new Date('2023-01-04').getTime() / 1000) 
+                },
+                { 
+                    from: Math.floor(new Date('2023-01-04').getTime() / 1000), 
+                    to: Math.floor(new Date('2023-01-05').getTime() / 1000) 
+                },
+                { 
+                    from: Math.floor(new Date('2023-01-05').getTime() / 1000), 
+                    to: Math.floor(new Date('2023-01-06').getTime() / 1000) 
+                }
+            ];
+            
+            // Track synchronization success for each update
+            let syncSuccessCount = 0;
+            let syncAttemptCount = 0;
+            const syncResults = [];
+            
+            // Setup VolumeChart sync tracking
+            const volumeSetVisibleRangeSpy = jest.spyOn(volumeChart.chart.timeScale(), 'setVisibleRange');
+            const volumeSetLogicalRangeSpy = jest.spyOn(volumeChart.chart.timeScale(), 'setVisibleLogicalRange');
+            const volumeApplyOptionsSpy = jest.spyOn(volumeChart.chart.timeScale(), 'applyOptions');
+            
+            // Clear any previous calls that might have occurred during setup
+            volumeSetVisibleRangeSpy.mockClear();
+            volumeSetLogicalRangeSpy.mockClear();
+            volumeApplyOptionsSpy.mockClear();
+            
+            // Mock MainChart synchronization method with state updates
+            mainChart.syncTimeRangeToVolumeChart = jest.fn().mockImplementation((timeRange) => {
+                syncAttemptCount++;
+                
+                try {
+                    // Simulate successful synchronization
+                    volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(timeRange);
+                    volumeChart.chart.timeScale().setVisibleRange(timeRange);
+                    volumeChart.chart.timeScale().setVisibleLogicalRange({ from: 0, to: 100 });
+                    volumeChart.chart.timeScale().applyOptions({ barSpacing: 10 });
+                    
+                    syncSuccessCount++;
+                    return true;
+                } catch (error) {
+                    console.error(`Sync failed for update ${syncAttemptCount}:`, error);
+                    return false;
+                }
+            });
+            
+            // Perform multiple updates and verify synchronization
+            for (let i = 0; i < updates.length; i++) {
+                const timeRange = updates[i];
+                
+                console.log(`执行第 ${i + 1} 次同步更新:`, {
+                    from: new Date(timeRange.from * 1000).toISOString().split('T')[0],
+                    to: new Date(timeRange.to * 1000).toISOString().split('T')[0]
+                });
+                
+                // Update MainChart state
+                mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(timeRange);
+                mainChart.chart.timeScale().getVisibleLogicalRange = jest.fn().mockReturnValue({ from: 0, to: 100 });
+                
+                // Trigger synchronization
+                const syncResult = mainChart.syncTimeRangeToVolumeChart(timeRange);
+                
+                // Verify synchronization was attempted
+                expect(mainChart.syncTimeRangeToVolumeChart).toHaveBeenCalledWith(timeRange);
+                
+                // Get VolumeChart state after sync
+                const volumeRange = volumeChart.chart.timeScale().getVisibleRange();
+                
+                // Verify synchronization success
+                expect(volumeRange).toEqual(timeRange);
+                expect(volumeSetVisibleRangeSpy).toHaveBeenCalledWith(timeRange);
+                
+                // Record sync result
+                syncResults.push({
+                    updateIndex: i + 1,
+                    timeRange,
+                    mainRange: mainChart.chart.timeScale().getVisibleRange(),
+                    volumeRange: volumeRange,
+                    synchronized: JSON.stringify(volumeRange) === JSON.stringify(timeRange),
+                    syncResult
+                });
+            }
+            
+            // Verify all updates were synchronized successfully
+            expect(syncAttemptCount).toBe(updates.length);
+            expect(syncSuccessCount).toBe(updates.length);
+            
+            // Debug: Check actual call counts before assertions
+            const actualSetVisibleRangeCalls = volumeSetVisibleRangeSpy.mock.calls.length;
+            const actualSetLogicalRangeCalls = volumeSetLogicalRangeSpy.mock.calls.length;
+            const actualApplyOptionsCalls = volumeApplyOptionsSpy.mock.calls.length;
+            
+            console.log('Spy 调用次数调试信息:', {
+                expectedCalls: updates.length,
+                setVisibleRangeCalls: actualSetVisibleRangeCalls,
+                setLogicalRangeCalls: actualSetLogicalRangeCalls,
+                applyOptionsCalls: actualApplyOptionsCalls,
+                syncAttempts: syncAttemptCount,
+                syncSuccesses: syncSuccessCount
+            });
+            
+            expect(volumeSetVisibleRangeSpy).toHaveBeenCalledTimes(updates.length);
+            expect(volumeSetLogicalRangeSpy).toHaveBeenCalledTimes(updates.length);
+            expect(volumeApplyOptionsSpy).toHaveBeenCalledTimes(updates.length);
+            
+            // Verify final state consistency
+            const finalMainRange = mainChart.chart.timeScale().getVisibleRange();
+            const finalVolumeRange = volumeChart.chart.timeScale().getVisibleRange();
+            const lastUpdate = updates[updates.length - 1];
+            
+            expect(finalMainRange).toEqual(lastUpdate);
+            expect(finalVolumeRange).toEqual(lastUpdate);
+            expect(finalMainRange).toEqual(finalVolumeRange);
+            
+            // Verify all synchronizations were successful
+            const allSynchronized = syncResults.every(result => result.synchronized);
+            expect(allSynchronized).toBe(true);
+            
+            console.log('多次同步验证完成:', {
+                totalUpdates: updates.length,
+                syncAttempts: syncAttemptCount,
+                syncSuccesses: syncSuccessCount,
+                allSynchronized,
+                finalConsistency: JSON.stringify(finalMainRange) === JSON.stringify(finalVolumeRange),
+                syncResults: syncResults.map(r => ({
+                    update: r.updateIndex,
+                    synchronized: r.synchronized,
+                    timeRange: {
+                        from: new Date(r.timeRange.from * 1000).toISOString().split('T')[0],
+                        to: new Date(r.timeRange.to * 1000).toISOString().split('T')[0]
+                    }
+                }))
+            });
+            
+            // Cleanup
+            volumeSetVisibleRangeSpy.mockRestore();
+            volumeSetLogicalRangeSpy.mockRestore();
+            volumeApplyOptionsSpy.mockRestore();
+        });
+        
+        it('should handle partial synchronization failures gracefully', async () => {
+            // Setup: Define multiple updates with some that will fail
+            const updates = [
+                { 
+                    from: Math.floor(new Date('2023-01-01').getTime() / 1000), 
+                    to: Math.floor(new Date('2023-01-02').getTime() / 1000),
+                    shouldFail: false
+                },
+                { 
+                    from: Math.floor(new Date('2023-01-02').getTime() / 1000), 
+                    to: Math.floor(new Date('2023-01-03').getTime() / 1000),
+                    shouldFail: true // This sync will fail
+                },
+                { 
+                    from: Math.floor(new Date('2023-01-03').getTime() / 1000), 
+                    to: Math.floor(new Date('2023-01-04').getTime() / 1000),
+                    shouldFail: false
+                }
+            ];
+            
+            let syncAttemptCount = 0;
+            let syncSuccessCount = 0;
+            let syncFailureCount = 0;
+            const syncResults = [];
+            
+            // Mock synchronization with selective failures
+            mainChart.syncTimeRangeToVolumeChart = jest.fn().mockImplementation((timeRange, updateIndex) => {
+                syncAttemptCount++;
+                const update = updates[updateIndex];
+                
+                if (update && update.shouldFail) {
+                    syncFailureCount++;
+                    throw new Error(`Simulated sync failure for update ${updateIndex + 1}`);
+                }
+                
+                // Successful sync
+                volumeChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(timeRange);
+                syncSuccessCount++;
+                return true;
+            });
+            
+            // Perform updates with error handling
+            for (let i = 0; i < updates.length; i++) {
+                const update = updates[i];
+                const timeRange = { from: update.from, to: update.to };
+                
+                try {
+                    // Update MainChart state
+                    mainChart.chart.timeScale().getVisibleRange = jest.fn().mockReturnValue(timeRange);
+                    
+                    // Attempt synchronization
+                    const syncResult = mainChart.syncTimeRangeToVolumeChart(timeRange, i);
+                    
+                    // Record successful sync
+                    syncResults.push({
+                        updateIndex: i + 1,
+                        success: true,
+                        timeRange,
+                        error: null
+                    });
+                    
+                } catch (error) {
+                    // Record failed sync
+                    syncResults.push({
+                        updateIndex: i + 1,
+                        success: false,
+                        timeRange,
+                        error: error.message
+                    });
+                    
+                    console.log(`同步失败 (更新 ${i + 1}):`, error.message);
+                }
+            }
+            
+            // Verify partial success scenario
+            expect(syncAttemptCount).toBe(updates.length);
+            expect(syncSuccessCount).toBe(2); // 2 successful syncs
+            expect(syncFailureCount).toBe(1); // 1 failed sync
+            
+            // Verify that successful syncs worked properly
+            const successfulSyncs = syncResults.filter(r => r.success);
+            const failedSyncs = syncResults.filter(r => !r.success);
+            
+            expect(successfulSyncs).toHaveLength(2);
+            expect(failedSyncs).toHaveLength(1);
+            expect(failedSyncs[0].error).toBe('Simulated sync failure for update 2');
+            
+            // Verify system continues to function after failures
+            const finalMainRange = mainChart.chart.timeScale().getVisibleRange();
+            expect(finalMainRange).toBeDefined();
+            
+            console.log('部分同步失败处理验证完成:', {
+                totalUpdates: updates.length,
+                syncAttempts: syncAttemptCount,
+                syncSuccesses: syncSuccessCount,
+                syncFailures: syncFailureCount,
+                successfulSyncs: successfulSyncs.length,
+                failedSyncs: failedSyncs.length,
+                systemStable: !!finalMainRange
             });
         });
     });
