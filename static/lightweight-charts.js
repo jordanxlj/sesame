@@ -823,6 +823,12 @@ class BaseChart extends EventEmitter {
                 console.warn(`时间转换失败: ${this.id}`, { original: timeRange, converted: convertedTimeRange });
                 return;
             }
+            
+            // 验证时间范围顺序
+            if (convertedTimeRange.from >= convertedTimeRange.to) {
+                console.warn(`时间范围顺序无效: ${this.id}`, convertedTimeRange);
+                return;
+            }
 
             this.chart.timeScale().setVisibleRange(convertedTimeRange);
             this.emit('timeRangeChanged', timeRange);
