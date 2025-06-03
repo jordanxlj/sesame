@@ -50,43 +50,46 @@ const createMockTimeScale = () => ({
     applyOptions: jest.fn()
 });
 
-const createMockChart = () => ({
-    addSeries: jest.fn().mockReturnValue({
-        setData: jest.fn(),
-        update: jest.fn(),
-        setMarkers: jest.fn(),
-        applyOptions: jest.fn(),
-        priceScale: jest.fn().mockReturnValue({
+const createMockChart = () => {
+    const mockTimeScale = createMockTimeScale();
+    return {
+        addSeries: jest.fn().mockReturnValue({
+            setData: jest.fn(),
+            update: jest.fn(),
+            setMarkers: jest.fn(),
+            applyOptions: jest.fn(),
+            priceScale: jest.fn().mockReturnValue({
+                applyOptions: jest.fn()
+            })
+        }),
+        addCandlestickSeries: jest.fn().mockReturnValue({
+            setData: jest.fn(),
+            applyOptions: jest.fn(),
+            priceFormatter: jest.fn()
+        }),
+        addLineSeries: jest.fn().mockReturnValue({
+            setData: jest.fn(),
             applyOptions: jest.fn()
-        })
-    }),
-    addCandlestickSeries: jest.fn().mockReturnValue({
-        setData: jest.fn(),
-        applyOptions: jest.fn(),
-        priceFormatter: jest.fn()
-    }),
-    addLineSeries: jest.fn().mockReturnValue({
-        setData: jest.fn(),
-        applyOptions: jest.fn()
-    }),
-    addHistogramSeries: jest.fn().mockReturnValue({
-        setData: jest.fn(),
-        applyOptions: jest.fn()
-    }),
-    removeSeries: jest.fn(),
-    timeScale: jest.fn().mockImplementation(() => createMockTimeScale()),
-    priceScale: jest.fn().mockImplementation((id) => ({
-        applyOptions: jest.fn(),
-        options: jest.fn().mockReturnValue({
-            scaleMargins: { top: 0.1, bottom: 0.1 }
-        })
-    })),
-    subscribeCrosshairMove: jest.fn(),
-    unsubscribeCrosshairMove: jest.fn(),
-    resize: jest.fn(),
-    remove: jest.fn(),
-    takeScreenshot: jest.fn()
-});
+        }),
+        addHistogramSeries: jest.fn().mockReturnValue({
+            setData: jest.fn(),
+            applyOptions: jest.fn()
+        }),
+        removeSeries: jest.fn(),
+        timeScale: jest.fn().mockReturnValue(mockTimeScale),
+        priceScale: jest.fn().mockImplementation((id) => ({
+            applyOptions: jest.fn(),
+            options: jest.fn().mockReturnValue({
+                scaleMargins: { top: 0.1, bottom: 0.1 }
+            })
+        })),
+        subscribeCrosshairMove: jest.fn(),
+        unsubscribeCrosshairMove: jest.fn(),
+        resize: jest.fn(),
+        remove: jest.fn(),
+        takeScreenshot: jest.fn()
+    };
+};
 
 // 全局 LightweightCharts Mock
 global.LightweightCharts = {
