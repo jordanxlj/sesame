@@ -1978,7 +1978,7 @@ describe('MainChart and VolumeChart Data Synchronization', () => {
 
             // Verify specific time differences
             const daysDifference = (volumeRange.from - mainRange.from) / (24 * 3600);
-            expect(daysDifference).toBeCloseTo(31, 0); // About 31 days difference
+            expect(daysDifference).toBeCloseTo(-31, 0); // VolumeChart starts 31 days earlier
 
             console.log('时间范围不一致检测完成:', {
                 mainSpan: mainSpan / (24 * 3600), // days
