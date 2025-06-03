@@ -550,7 +550,7 @@ class BaseChart extends EventEmitter {
             
             // 检查LightweightCharts是否可用
             if (typeof LightweightCharts === 'undefined') {
-                throw new Error('LightweightCharts库未加载，请确保在页面中正确引入LightweightCharts库');
+                throw new Error('LightweightCharts库未加载');
             }
             
             if (typeof LightweightCharts.createChart !== 'function') {
@@ -866,7 +866,28 @@ class BaseChart extends EventEmitter {
         
         try {
             const range = this.chart.timeScale().getVisibleRange();
-            return ChartUtils.isValidTimeRange(range) ? range : null;
+            
+            // 基本检查：如果range不存在或不是对象，返回null
+            if (!range || typeof range !== 'object') {
+                return null;
+            }
+            
+            // 检查是否有NaN值
+            if (isNaN(range.from) || isNaN(range.to)) {
+                return null;
+            }
+            
+            // 检查负值（但允许0作为合法的边界值）
+            if (range.from < 0 || range.to < 0) {
+                return null;
+            }
+            
+            // 检查范围顺序（from应该小于等于to）
+            if (range.from > range.to) {
+                return null;
+            }
+            
+            return range;
         } catch (error) {
             console.error(`获取时间范围失败: ${this.id}`, error);
             return null;

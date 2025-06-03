@@ -81,6 +81,8 @@ const createMockChart = () => ({
             scaleMargins: { top: 0.1, bottom: 0.1 }
         })
     })),
+    subscribeCrosshairMove: jest.fn(),
+    unsubscribeCrosshairMove: jest.fn(),
     resize: jest.fn(),
     remove: jest.fn(),
     takeScreenshot: jest.fn()
