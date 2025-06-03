@@ -751,6 +751,12 @@ class BaseChart extends EventEmitter {
                     
                     // 🔍 DEBUG: 记录数据设置后的逻辑范围
                     setTimeout(() => {
+                        // 添加null检查，防止在chart被销毁后执行回调
+                        if (!this.chart) {
+                            console.warn(`⚠️ [${this.id}] Chart已被销毁，跳过数据设置后的检查`);
+                            return;
+                        }
+                        
                         const afterDataLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
                         console.log(`🔍 [${this.id}] 设置${type}数据后 logical range:`, afterDataLogicalRange);
                         
@@ -1058,6 +1064,12 @@ class BaseChart extends EventEmitter {
                 
                 // 检查修复后的结果
                 setTimeout(() => {
+                    // 添加null检查，防止在chart被销毁后执行回调
+                    if (!this.chart) {
+                        console.warn(`⚠️ [${this.id}] Chart已被销毁，跳过逻辑范围检查`);
+                        return;
+                    }
+                    
                     const fixedRange = this.chart.timeScale().getVisibleLogicalRange();
                     console.log(`🔍 [${this.id}] fitContent后的逻辑范围:`, fixedRange);
                     
@@ -1109,6 +1121,12 @@ class BaseChart extends EventEmitter {
             
             // 验证修复结果
             setTimeout(() => {
+                // 添加null检查，防止在chart被销毁后执行回调
+                if (!this.chart) {
+                    console.warn(`⚠️ [${this.id}] Chart已被销毁，跳过修复验证`);
+                    return;
+                }
+                
                 const finalRange = this.chart.timeScale().getVisibleLogicalRange();
                 console.log(`🔍 [${this.id}] 手动修复后的逻辑范围:`, finalRange);
                 
@@ -1459,6 +1477,12 @@ class MainChart extends BaseChart {
             
             // 🔍 DEBUG: 记录调整后的逻辑范围
             setTimeout(() => {
+                // 添加null检查，防止在chart被销毁后执行回调
+                if (!this.chart) {
+                    console.warn('⚠️ [ADJUST-TIME] Chart已被销毁，跳过异步检查');
+                    return;
+                }
+                
                 const afterAdjustLogicalRange = this.chart.timeScale().getVisibleLogicalRange();
                 console.log(`🔍 [ADJUST-TIME] 调整后 logical range:`, afterAdjustLogicalRange);
                 
@@ -3846,13 +3870,19 @@ class MainChart extends BaseChart {
                     
                     // 验证最终结果
                     this.createTimer(() => {
+                        // 添加null检查，防止在chart被销毁后执行回调
+                        if (!this.chart) {
+                            console.warn(`⚠️ [${this.id}] Chart已被销毁，跳过修复验证`);
+                            return;
+                        }
+                        
                         const finalRange = this.chart.timeScale().getVisibleLogicalRange();
-                        console.log(`🔍 [MAIN-FIX] 最终逻辑范围:`, finalRange);
+                        console.log(`🔍 [${this.id}] 手动修复后的逻辑范围:`, finalRange);
                         
                         if (finalRange && finalRange.from >= 0) {
-                            console.log(`✅ [MAIN-FIX] 负数逻辑范围修复成功`);
+                            console.log(`✅ [${this.id}] 负数逻辑范围已手动修复`);
                         } else {
-                            console.error(`❌ [MAIN-FIX] 负数逻辑范围修复失败，需要进一步调试`);
+                            console.warn(`⚠️ [${this.id}] 手动修复逻辑范围仍有问题`);
                         }
                         
                         this._isFixingLogicalRange = false;
